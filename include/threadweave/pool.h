@@ -1,7 +1,6 @@
 #ifndef TW_POOL_H
 #define TW_POOL_H
 
-#include <algorithm>
 #include <condition_variable>
 #include <functional>
 #include <future>
