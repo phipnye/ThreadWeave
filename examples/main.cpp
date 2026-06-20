@@ -1,17 +1,18 @@
-#include <threadweave/scheduler.h>
-#include <iostream>
+#include <threadweave/pool.h>
+
 #include <future>
+#include <iostream>
 #include <vector>
 
 int main() {
-  threadweave::Scheduler s{};
+  ThreadWeave::Pool pool{};
   std::vector<std::future<int>> futures{};
 
   for (int i{0}; i < 100; ++i) {
-    futures.emplace_back(s.enqueue([i] { return i * i; }));
+    futures.emplace_back(pool.emplace([i] { return i * i; }));
   }
 
-  for (const auto& f : futures) {
+  for (auto& f : futures) {
     std::cout << f.get() << '\n';
   }
 }
