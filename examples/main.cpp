@@ -1,4 +1,5 @@
 #include <threadweave/pool.h>
+#include <threadweave/stack.h>
 
 #include <cstddef>
 #include <future>
