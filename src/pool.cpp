@@ -12,13 +12,13 @@
 namespace ThreadWeave {
 
 // Ctor
-Pool::Pool(uint nThreads) {
+Pool::Pool(unsigned nThreads) {
   // Make sure at least one thread
   nThreads = std::max(nThreads, 1u);
   workers_.reserve(nThreads);
 
   // Fill pool with worker threads
-  for (uint _{0}; _ < nThreads; ++_) {
+  for (unsigned _{0}; _ < nThreads; ++_) {
     workers_.emplace_back([this] {
       while (true) {
         // Current task for the given thread

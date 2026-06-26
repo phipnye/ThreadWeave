@@ -8,32 +8,30 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Compiler flags
 set(COMPILER_FLAGS
-    -Wall
-    -Wextra
-    -Wall
-    -Wextra
-    -Wshadow
-    -Weffc++
-    -Wconversion
-    -pedantic-errors
-    -Werror
+        -Wall
+        -Wextra
+        -Wall
+        -Wextra
+        -Wshadow
+        -Weffc++
+        -Wconversion
+        -pedantic-errors
+        -Werror
 )
 
 # --- ThreadWeave library
 add_library(ThreadWeave STATIC)
 target_sources(ThreadWeave
-    PRIVATE
+        PRIVATE
         src/pool.cpp
 
-    PUBLIC
+        PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
         FILES include/threadweave/pool.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 
-# --- Example program
-add_executable(ExampleProgram)
-target_sources(ExampleProgram PRIVATE examples/main.cpp)
-target_compile_options(ExampleProgram PRIVATE ${COMPILER_FLAGS})
-target_link_libraries(ExampleProgram PRIVATE ThreadWeave)
+# --- Subdirectories
+add_subdirectory(examples)
+add_subdirectory(benchmark)
