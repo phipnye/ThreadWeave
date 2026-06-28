@@ -1,6 +1,8 @@
 #ifndef TW_STACK_H
 #define TW_STACK_H
 
+#include <threadweave/hazard.h>
+
 #include <atomic>
 #include <memory>
 #include <utility>
@@ -14,15 +16,15 @@ class Stack {
   struct Node {
     // --- Data members
     std::shared_ptr<T> data_;
-    std::shared_ptr<Node> next_;
+    Node* next_;
 
     // Ctor
-    explicit Node(T data, std::shared_ptr<Node> next = nullptr)
+    explicit Node(T data, Node* next = nullptr)
         : data_{std::make_shared<T>(std::move(data))}, next_{std::move(next)} {}
   };
 
   // --- Data members
-  std::atomic<std::shared_ptr<Node>> head_{nullptr};
+  std::atomic<Node*> head_{nullptr};
 
  public:
   // --- Ctor and assignment
@@ -30,14 +32,16 @@ class Stack {
   // Default ctor
   Stack() = default;
 
-  // Prevent copy operations
+  // Prevent copy and move operations
   Stack(const Stack&) = delete;
+  Stack(Stack&&) = delete;
   Stack& operator=(const Stack&) = delete;
+  Stack& operator=(Stack&&) = delete;
 
   // Push data onto the stack
   void push(T data) {
     // Generate new node
-    auto newNode{std::make_shared<Node>(std::move(data), head_.load())};
+    Node* newNode{new Node{std::move(data), head_.load()}};
 
     // Continually try to assign new node as the head
     while (!head_.compare_exchange_weak(newNode->next_, newNode));
@@ -45,15 +49,47 @@ class Stack {
 
   // Pop data from the top of the stack
   std::shared_ptr<T> pop() {
+    // Get the hazard pointer for the current thread
+    std::atomic<void*>& hp{Internal::getThreadHazardPointer()};
+
     // Retrieve node at top of stack
-    auto oldHead{head_.load()};
+    Node* oldHead{head_.load()};
 
     // While old head is non-null, continually try taking it from the top of the
     // stack
-    while (oldHead && !head_.compare_exchange_weak(oldHead, oldHead->next_));
+    do {
+      Node* tmp{nullptr};
 
-    // Return null if the stack is empty
-    return oldHead ? oldHead->data_ : nullptr;
+      // Continually try to acquire the head of our list and store it with our
+      // hazard pointer
+      do {
+        tmp = oldHead;
+        hp.store(oldHead);
+        oldHead = head_.load();
+      } while (oldHead != tmp);
+
+    } while (oldHead &&
+             !head_.compare_exchange_strong(oldHead, oldHead->next_));
+
+    //
+
+    // Return null if the stack is empty or the data of the popped node
+    // otherwise
+    std::shared_ptr<T> res{nullptr};
+
+    if (oldHead) {
+      std::swap(res, oldHead->data_);
+
+      if (!Internal::anyThreadsUsingNode(oldHead)) {
+        saveForLater(oldHead);
+      } else {
+        delete oldHead;
+      }
+
+      deleteSavedNodes();
+    }
+
+    return res;
   }
 };
 
