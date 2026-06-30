@@ -28,7 +28,7 @@ target_sources(ThreadWeave
         PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
-        FILES include/threadweave/pool.h
+        FILES include/threadweave/main.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 

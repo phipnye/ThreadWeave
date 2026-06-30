@@ -1,5 +1,5 @@
 #include <benchmark/benchmark.h>
-#include <threadweave/pool.h>
+#include <threadweave/main.h>
 
 #include <cstddef>
 #include <future>

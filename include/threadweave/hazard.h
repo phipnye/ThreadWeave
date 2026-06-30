@@ -17,6 +17,8 @@ class HazardPointer {
   static constexpr std::size_t maxNumHPs{64};
   static inline Couple pool[maxNumHPs]{};
 
+  using MemoryOrder = std::memory_order;
+
   // --- Data members
   std::size_t poolIdx_;
 

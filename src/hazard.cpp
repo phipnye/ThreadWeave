@@ -13,8 +13,9 @@ HazardPointer::HazardPointer() : poolIdx_{maxNumHPs} {
     auto& [id, ptr]{pool[i]};
 
     // If the ID is unset, claim this pairing and store this thread's ID
-    if (std::thread::id oldId{};
-        id.compare_exchange_strong(oldId, std::this_thread::get_id())) {
+    if (std::thread::id oldId{}; id.compare_exchange_strong(
+            oldId, std::this_thread::get_id(), MemoryOrder::acquire,
+            MemoryOrder::relaxed)) {
       poolIdx_ = i;
       break;
     }
@@ -31,8 +32,8 @@ HazardPointer::HazardPointer() : poolIdx_{maxNumHPs} {
 HazardPointer::~HazardPointer() {
   // Clear the memory location before clearing the ID so other threads can use
   // this pointer
-  pool[poolIdx_].ptr.store(nullptr);
-  pool[poolIdx_].id.store(std::thread::id{});
+  pool[poolIdx_].ptr.store(nullptr, MemoryOrder::relaxed);
+  pool[poolIdx_].id.store(std::thread::id{}, MemoryOrder::release);
 }
 
 // Retrieve hazard pointer
@@ -50,7 +51,7 @@ std::atomic<void*>& getThreadHazardPointer() {
 // Check if any nodes are using ptr
 bool HazardPointer::isPointerInUse(const void* const nodePtr) {
   for (auto& [_, ptr] : pool) {
-    if (ptr.load() == nodePtr) {
+    if (ptr.load(MemoryOrder::acquire) == nodePtr) {
       return true;
     }
   }

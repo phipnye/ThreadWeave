@@ -14,6 +14,7 @@ namespace ThreadWeave {
 template <typename T>
   requires(std::is_nothrow_move_constructible_v<T>)
 class Stack {
+  // --- Node helper aggregate
   struct Node {
     T data_;
     Node* next_;
@@ -23,6 +24,8 @@ class Stack {
   std::atomic<Node*> head_{nullptr};
   std::atomic<Node*> toBeDeleted_{nullptr};
 
+  using MemoryOrder = std::memory_order;
+
  public:
   // --- Ctor and assignment
 
@@ -31,8 +34,9 @@ class Stack {
 
   // Dtor
   ~Stack() {
-    deleteNodes(head_.load());
-    deleteNodes(toBeDeleted_.load());
+    // Executed in single-threaded context, relaxed is sufficient
+    deleteNodes(head_.load(MemoryOrder::relaxed));
+    deleteNodes(toBeDeleted_.load(MemoryOrder::relaxed));
   }
 
   // Prevent copy and move operations
@@ -46,10 +50,11 @@ class Stack {
   // Push data onto the stack
   void push(T data) {
     // Generate new node
-    Node* newNode{new Node{std::move(data), head_.load()}};
+    Node* newNode{new Node{std::move(data), head_.load(MemoryOrder::relaxed)}};
 
     // Continually try to assign new node as the head
-    while (!head_.compare_exchange_weak(newNode->next_, newNode));
+    while (!head_.compare_exchange_weak(
+        newNode->next_, newNode, MemoryOrder::release, MemoryOrder::relaxed));
   }
 
   // Pop data from the top of the stack
@@ -58,41 +63,42 @@ class Stack {
     std::atomic<void*>& hp{Internal::getThreadHazardPointer()};
 
     // Retrieve node at top of stack
-    Node* oldHead{head_.load()};
+    Node* popNode{head_.load(MemoryOrder::relaxed)};
 
     // While old head is non-null, continually try taking it from the top of the
     // stack
     do {
-      Node* tmp{nullptr};
+      const Node* tmp{nullptr};
 
       // Continually try to acquire the head of our list and store it with our
       // hazard pointer
       do {
-        tmp = oldHead;
-        hp.store(oldHead);
-        oldHead = head_.load();
-      } while (oldHead != tmp);
+        tmp = popNode;
+        hp.store(popNode, MemoryOrder::seq_cst);
+        popNode = head_.load(MemoryOrder::acquire);
+      } while (popNode != tmp);
 
-    } while (oldHead &&
-             !head_.compare_exchange_strong(oldHead, oldHead->next_));
+    } while (popNode && !head_.compare_exchange_strong(popNode, popNode->next_,
+                                                       MemoryOrder::acquire,
+                                                       MemoryOrder::relaxed));
 
     // Clear the hazard pointer so the node can be deleted if it's added to the
     // list of nodes that need to be deleted later
-    hp.store(nullptr);
+    hp.store(nullptr, MemoryOrder::release);
 
     // Return null if the stack is empty or the data of the popped node
     // otherwise (data should be no throw move constructible and std::optional
     // requires no heap allocation so this should be safe)
-    std::optional<T> res{oldHead ? std::make_optional(std::move(oldHead->data_))
+    std::optional<T> res{popNode ? std::make_optional(std::move(popNode->data_))
                                  : std::nullopt};
 
-    if (oldHead) {
+    if (popNode) {
       // Save the popped node for later if other threads are using it, otherwise
       // delete it immediately
-      if (!Internal::anyThreadsUsingNode(oldHead)) {
-        delete oldHead;
+      if (!Internal::anyThreadsUsingNode(popNode)) {
+        delete popNode;
       } else {
-        saveForLater(oldHead);
+        saveForLater(popNode);
       }
 
       // Try deleting any nodes we previously saved for later
@@ -107,15 +113,16 @@ class Stack {
   // later
   void saveForLater(Node* const newNode) {
     // Prepend to beginning of list
-    newNode->next_ = toBeDeleted_.load();
-    while (!toBeDeleted_.compare_exchange_weak(newNode->next_, newNode));
+    newNode->next_ = toBeDeleted_.load(MemoryOrder::relaxed);
+    while (!toBeDeleted_.compare_exchange_weak(
+        newNode->next_, newNode, MemoryOrder::release, MemoryOrder::relaxed));
   }
 
   // Try freeing memory of nodes that had to be saved for later due to use by
   // other threads
   void deleteSavedNodes() {
     // Acquire the list of nodes that still need deleting
-    Node* list{toBeDeleted_.exchange(nullptr)};
+    Node* list{toBeDeleted_.exchange(nullptr, MemoryOrder::acq_rel)};
 
     // Store nodes that we still need to save for later
     Node* saveHead{nullptr};
@@ -144,8 +151,10 @@ class Stack {
 
     // Add our saved list back to the list of nodes to be deleted later
     if (saveTail) {
-      saveTail->next_ = toBeDeleted_.load();
-      while (!toBeDeleted_.compare_exchange_weak(saveTail->next_, saveHead));
+      saveTail->next_ = toBeDeleted_.load(MemoryOrder::relaxed);
+      while (!toBeDeleted_.compare_exchange_weak(saveTail->next_, saveHead,
+                                                 MemoryOrder::release,
+                                                 MemoryOrder::relaxed));
     }
   }
 
