@@ -1,4 +1,4 @@
-#include <threadweave/hazard.h>
+#include <threadweave/Hazard.h>
 
 #include <atomic>
 #include <stdexcept>
@@ -14,8 +14,8 @@ HazardPointer::HazardPointer() : poolIdx_{maxNumHPs} {
 
     // If the ID is unset, claim this pairing and store this thread's ID
     if (std::thread::id oldId{}; id.compare_exchange_strong(
-            oldId, std::this_thread::get_id(), MemoryOrder::acquire,
-            MemoryOrder::relaxed)) {
+            oldId, std::this_thread::get_id(), std::memory_order::acquire,
+            std::memory_order::relaxed)) {
       poolIdx_ = i;
       break;
     }
@@ -32,8 +32,8 @@ HazardPointer::HazardPointer() : poolIdx_{maxNumHPs} {
 HazardPointer::~HazardPointer() {
   // Clear the memory location before clearing the ID so other threads can use
   // this pointer
-  pool[poolIdx_].ptr.store(nullptr, MemoryOrder::relaxed);
-  pool[poolIdx_].id.store(std::thread::id{}, MemoryOrder::release);
+  pool[poolIdx_].ptr.store(nullptr, std::memory_order::relaxed);
+  pool[poolIdx_].id.store(std::thread::id{}, std::memory_order::release);
 }
 
 // Retrieve hazard pointer
@@ -51,7 +51,7 @@ std::atomic<void*>& getThreadHazardPointer() {
 // Check if any nodes are using ptr
 bool HazardPointer::isPointerInUse(const void* const nodePtr) {
   for (auto& [_, ptr] : pool) {
-    if (ptr.load(MemoryOrder::acquire) == nodePtr) {
+    if (ptr.load(std::memory_order::acquire) == nodePtr) {
       return true;
     }
   }
@@ -62,6 +62,11 @@ bool HazardPointer::isPointerInUse(const void* const nodePtr) {
 // Check if any threads are using node
 bool anyThreadsUsingNode(const void* const nodePtr) {
   return HazardPointer::isPointerInUse(nodePtr);
+}
+
+HazardGuard::~HazardGuard() {
+  std::atomic<void*>& hp{getThreadHazardPointer()};
+  hp.store(nullptr, std::memory_order::release);
 }
 
 }  // namespace ThreadWeave::Internal
