@@ -6,66 +6,76 @@
 
 namespace ThreadWeave::Internal {
 
-// Ctor
-HazardPointer::HazardPointer() : poolIdx_{maxNumHPs} {
-  // Search for the first available pointer available in our pool
-  for (std::size_t i{0}; i < maxNumHPs; ++i) {
-    auto& [id, ptr]{pool[i]};
+ThreadHazardManager::ThreadHazardManager() : poolIdx_{maxThreads} {
+  // Search for the first available slot in our thread slot pool
+  for (std::size_t i{0}; i < maxThreads; ++i) {
+    // Check ith slot to see if it's been claimed yet
+    auto& [id, ptrs]{pool[i]};
 
-    // If the ID is unset, claim this pairing and store this thread's ID
-    if (std::thread::id oldId{}; id.compare_exchange_strong(
-            oldId, std::this_thread::get_id(), std::memory_order::acquire,
+    // If the ID is unset, claim this slot and store this thread's ID
+    if (std::thread::id emptyId{}; id.compare_exchange_strong(
+            emptyId, std::this_thread::get_id(), std::memory_order::acquire,
             std::memory_order::relaxed)) {
       poolIdx_ = i;
       break;
     }
   }
 
-  // There are no available pointers for the current thread, throw a runtime
+  // There are no available thread slots for the current thread, throw a runtime
   // error
-  if (poolIdx_ == maxNumHPs) {
+  if (poolIdx_ == maxThreads) {
     throw std::runtime_error{"No available hazard pointers"};
   }
 }
 
-// Dtor
-HazardPointer::~HazardPointer() {
-  // Clear the memory location before clearing the ID so other threads can use
-  // this pointer
-  pool[poolIdx_].ptr.store(nullptr, std::memory_order::relaxed);
-  pool[poolIdx_].id.store(std::thread::id{}, std::memory_order::release);
+ThreadHazardManager::~ThreadHazardManager() {
+  // Clear the hazard pointers before clearing the ID so other threads can use
+  // this thread slot
+  auto& [id, ptrs]{pool[poolIdx_]};
+
+  for (auto& ptr : ptrs) {
+    ptr.store(nullptr, std::memory_order::relaxed);
+  }
+
+  id.store(std::thread::id{}, std::memory_order::release);
 }
 
-// Retrieve hazard pointer
-// ReSharper disable once CppMemberFunctionMayBeConst
-std::atomic<void*>& HazardPointer::getPointer() noexcept {
-  return pool[poolIdx_].ptr;
+std::atomic<void*>& ThreadHazardManager::getPointer(
+    const std::size_t idx) noexcept {
+  return pool[poolIdx_].ptr[idx];
 }
 
-// Get current thread's hazard pointer
-std::atomic<void*>& getThreadHazardPointer() {
-  thread_local HazardPointer hp{};
-  return hp.getPointer();
-}
+bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) {
+  for (const auto& [id, ptrs] : pool) {
+    // Empty id indicates no use
+    if (id.load(std::memory_order::relaxed) == std::thread::id{}) {
+      continue;
+    }
 
-// Check if any nodes are using ptr
-bool HazardPointer::isPointerInUse(const void* const nodePtr) {
-  for (auto& [_, ptr] : pool) {
-    if (ptr.load(std::memory_order::acquire) == nodePtr) {
-      return true;
+    // Otherwise, check if any pointers point to same memory location
+    for (const auto& ptr : ptrs) {
+      if (ptr.load(std::memory_order::acquire) == nodePtr) {
+        return true;
+      }
     }
   }
 
   return false;
 }
 
-// Check if any threads are using node
-bool anyThreadsUsingNode(const void* const nodePtr) {
-  return HazardPointer::isPointerInUse(nodePtr);
+std::atomic<void*>& getThreadHazardPointer(const std::size_t idx) {
+  thread_local ThreadHazardManager manager{};
+  return manager.getPointer(idx);
 }
 
+bool anyThreadsUsingNode(const void* const nodePtr) {
+  return ThreadHazardManager::isPointerInUse(nodePtr);
+}
+
+HazardGuard::HazardGuard(const std::size_t idx) : idx_{idx} {}
+
 HazardGuard::~HazardGuard() {
-  std::atomic<void*>& hp{getThreadHazardPointer()};
+  std::atomic<void*>& hp{getThreadHazardPointer(idx_)};
   hp.store(nullptr, std::memory_order::release);
 }
 

@@ -49,6 +49,14 @@ class RetireList {
 
   // --- Member functions
 
+  // Check if the retire list is lock-free
+  [[nodiscard]] bool isLockFree() const { return tbdList_.is_lock_free(); }
+
+  // Check whether the underlying atomic types are always lock-free
+  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
+    return decltype(tbdList_)::is_always_lock_free;
+  }
+
   // Save node for later since it cannot be freed yet due to use by other nodes
   void saveForLater(Node* node) {
     // Keep trying to prepend node to front of our list

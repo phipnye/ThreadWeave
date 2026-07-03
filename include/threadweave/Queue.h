@@ -2,6 +2,8 @@
 #define TW_QUEUE_H
 
 #include <threadweave/Hazard.h>
+#include <threadweave/Node.h>
+#include <threadweave/RetireList.h>
 
 #include <atomic>
 #include <type_traits>
@@ -13,35 +15,21 @@ template <typename T>
   requires(std::is_nothrow_move_constructible_v<T>)
 class Queue {
   // --- Data members
+  using Node = Internal::AtomicSinglyLinkedListNode<std::optional<T>>;
   std::atomic<Node*> head_;
   std::atomic<Node*> tail_;
-  std::atomic<Node*> toBeDeleted_{nullptr};
+  Internal::RetireList<Node*> toBeDeleted_{};
 
  public:
   // --- Ctor, dtor, and assignment operators
 
-  // Ctor (T has a default constructor)
+  // Default ctor
   Queue()
-    requires(std::is_default_constructible_v<T>)
-      : head_{new Node{.data = T{}, .next = nullptr}},
-        tail_{head_.load(std::memory_order::relaxed)} {}
-
-  // Ctor (T has no default constructor)
-  template <typename... Args>
-  explicit Queue(Args&&... args)
-    requires(!std::is_default_constructible_v<T>)
-      // Initialize head and tail with dummy node (user is in-charge of
-      // constructing a suitable object for the dummy node)
-      : head_{
-            new Node{.data = T{std::forward<Args>(args)...}, .next = nullptr}},
+      : head_{new Node{.data = std::nullopt, .next = nullptr}},  // dummy
         tail_{head_.load(std::memory_order::relaxed)} {}
 
   // Dtor
-  ~Queue() {
-    // To be executed in single-threaded context, relaxed is sufficient
-    Node::deleteNodes(head_, std::memory_order::relaxed);
-    Node::deleteNodes(toBeDeleted_, std::memory_order::relaxed);
-  }
+  ~Queue() { Internal::deleteNodes(head_); }
 
   // Prevent copy and move operations
   Queue(const Queue&) = delete;
@@ -51,36 +39,43 @@ class Queue {
 
   // --- Member functions
 
-  // Add data to beginning of queue
+  // Check if the queue is lock-free
+  [[nodiscard]] bool isLockFree() const {
+    return head_.is_lock_free() && toBeDeleted_.isLockFree();
+  }
+
+  // Check whether the underlying atomic types are always lock-free
+  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
+    return decltype(head_)::is_always_lock_free &&
+           toBeDeleted_.isAlwaysLockFree();
+  }
+
+  // Add data to back of queue
   void push(T data) {
     // Construct new node to store data
     Node* newNode{new Node{.data = std::move(data), .next = nullptr}};
 
     while (true) {
-      // Use an RAII guard for clearing hazard pointer when node is no longer in
-      // use
+      // Use an RAII guard for clearing hazard pointer when held tail pointer is
+      // no longer in use
       Internal::HazardGuard hzrdGuard{};
-
-      // Continually acquire tail. At some point, it's next member should be
-      // NULL in which case we can finally attach the new node
       Node* tailPtr{hzrdGuard.acquirePointerWithHazard(tail_)};
       std::atomic<Node*>& nextAtomic{tailPtr->next};
+      Node* nextPtr{nextAtomic.load(std::memory_order::acquire)};
 
-      // Try moving the tail pointer chain along so that we can eventually
-      // attach our new node
-      if (Node* nextPtr{nextAtomic.load(std::memory_order::acquire)};
-          nextPtr != nullptr) {
+      // Tail is lagging behind, try moving the tail pointer chain along so that
+      // we can eventually attach our new node
+      if (nextPtr != nullptr) {
         tail_.compare_exchange_strong(tailPtr, nextPtr,
                                       std::memory_order::release,
                                       std::memory_order::relaxed);
-        continue;
       }
 
-      // If our tail's next pointer now points to null, we can finally attach it
-      // to the end of our list and then try moving the chain along
-      if (nextAtomic.compare_exchange_strong(nullptr, newNode,
-                                             std::memory_order::release,
-                                             std::memory_order::relaxed)) {
+      // If our tail's next pointer now points to null, we can finally try
+      // attaching it to the end of our list and then try moving the chain along
+      else if (nextAtomic.compare_exchange_strong(nextPtr, newNode,
+                                                  std::memory_order::release,
+                                                  std::memory_order::relaxed)) {
         // Try updating tail to move further down the chain (failures will get
         // resolved by later operations that push further down the chain)
         tail_.compare_exchange_weak(tailPtr, newNode,
@@ -97,40 +92,47 @@ class Queue {
     Node* popNode{nullptr};
 
     {
-      // Head is dummy node so acquiring next is always safe
+      // Head is fixed dummy node so acquiring next is always safe
       std::atomic<Node*>& headNext{
           head_.load(std::memory_order::acquire)->next};
 
-      // Use an RAII guard for clearing hazard pointer when node is no longer in
-      // use
+      // Use an RAII guard for clearing hazard pointer once we've acquired and
+      // unlinked it from the list
       Internal::HazardGuard hzrdGuard{};
 
       do {
-        // Acquire pointer to node on top of the stack with thread's hazard
+        // Acquire pointer to node at front of queue with thread's hazard
         // pointer pointing to it so that no other threads delete while acessing
         popNode = hzrdGuard.acquirePointerWithHazard(headNext);
       } while (popNode &&
-               !headNext.compare_exchange_strong(popNode, popNode->next,
-                                                 std::memory_order::acquire,
-                                                 std::memory_order::relaxed));
+               !headNext.compare_exchange_strong(
+                   popNode, popNode->next.load(std::memory_order::acquire),
+                   std::memory_order::acquire, std::memory_order::relaxed));
     }
 
     // Data should be no throw move constructible and std::optional
     // requires no heap allocation so this should be safe
-    std::optional<T> res{popNode ? std::make_optional(std::move(popNode->data))
-                                 : std::nullopt};
+    std::optional<T> res{popNode ? std::move(popNode->data) : std::nullopt};
 
     if (popNode) {
+      // In the case where the queue becomes empty and we just stole the last
+      // element, we must update tail to point back at the dummy
+      Node* expectedTail{popNode};
+      Node* dummy{head_.load(std::memory_order::relaxed)};
+      tail_.compare_exchange_strong(expectedTail, dummy,
+                                    std::memory_order::release,
+                                    std::memory_order::relaxed);
+
       // Save the popped node for later if other threads are using it, otherwise
       // delete it immediately
       if (!Internal::anyThreadsUsingNode(popNode)) {
         delete popNode;
       } else {
-        saveForLater(popNode);
+        toBeDeleted_.saveForLater(popNode);
       }
 
       // Try deleting any nodes we previously saved for later
-      deleteSavedNodes();
+      toBeDeleted_.deleteNodesChecked();
     }
 
     return res;

@@ -1,4 +1,4 @@
-#include <threadweave/Pool.h>
+#include <threadweave/main.h>
 
 #include <algorithm>
 #include <condition_variable>

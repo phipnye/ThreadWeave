@@ -41,6 +41,17 @@ class Stack {
 
   // --- Member functions
 
+  // Check if the stack is lock-free
+  [[nodiscard]] bool isLockFree() const {
+    return head_.is_lock_free() && toBeDeleted_.isLockFree();
+  }
+
+  // Check whether the underlying atomic types are always lock-free
+  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
+    return decltype(head_)::is_always_lock_free &&
+           toBeDeleted_.isAlwaysLockFree();
+  }
+
   // Push data onto the top of the stack
   void push(T data) {
     // Generate new node

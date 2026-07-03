@@ -7,74 +7,132 @@
 
 namespace ThreadWeave::Internal {
 
-class HazardPointer {
-  // --- Pool of hazard pointers and their coupled IDs
-  struct Couple {
-    std::atomic<std::thread::id> id;
-    std::atomic<void*> ptr;
-  };
-
-#ifndef MAX_NUM_HPS
+/**
+ * Class to be used in a thread local context in which a given thread utilizes
+ * the manager to acquire hazard pointers from a pool of them. Each
+ * thread-manager pairing will obtain two hazard pointers and the user can
+ * control for the number of hazard pointers necessary via the MAX_THREADS
+ * macro.
+ */
+class ThreadHazardManager {
+#ifndef MAX_THREADS
   // Default value, user can set via macro
-  static constexpr std::size_t maxNumHPs{64};
+  static constexpr std::size_t maxThreads{64};
 #else
-  static_assert(MAX_NUM_HPS > 0,
-                "Max number of hazard pointers should be a positive value");
-  static constexpr std::size_t maxNumHPs{MAX_NUM_HPS};
+  static_assert(MAX_THREADS > 0,
+                "Max number of threads should be a positive value");
+  static constexpr std::size_t maxThreads{MAX_THREADS};
 #endif
 
-  static inline Couple pool[maxNumHPs]{};
+  struct ThreadSlots {
+    std::atomic<std::thread::id> id;
+    std::atomic<void*> ptr[2];  // 2 hazard pointers per thread
+  };
+
+  // Pool of thread slots and their associated IDs
+  static inline ThreadSlots pool[maxThreads]{};
 
   // --- Data members
-  std::size_t poolIdx_;
+  std::size_t poolIdx_;  // manager's thread slot index
 
  public:
   // --- Ctors, Dtor, and assignement
-  HazardPointer();
+
+  /**
+   * Acquire a slot in the thread slot pool for current thread to indicate which
+   * pointers it's using, helping us prevent ABA problem.
+   */
+  ThreadHazardManager();
 
   // Don't allow copy or move operations
-  HazardPointer(const HazardPointer&) = delete;
-  HazardPointer(HazardPointer&&) = delete;
-  HazardPointer& operator=(const HazardPointer&) = delete;
-  HazardPointer& operator=(HazardPointer&&) = delete;
+  ThreadHazardManager(const ThreadHazardManager&) = delete;
+  ThreadHazardManager(ThreadHazardManager&&) = delete;
+  ThreadHazardManager& operator=(const ThreadHazardManager&) = delete;
+  ThreadHazardManager& operator=(ThreadHazardManager&&) = delete;
 
-  // Free the pairing in our pool so other threads can use it
-  ~HazardPointer();
+  /**
+   * Free this manager's resources in our pool so other threads can use it
+   */
+  ~ThreadHazardManager();
 
   // --- Member functions
 
-  // Return the pointer stored in our pool (note this does not modify the ID and
-  // hence could be const but this violates logical constness and hence const
-  // was omitted)
-  [[nodiscard]] std::atomic<void*>& getPointer() noexcept;
+  /**
+   * Retrieve this managers's `idx`th hazard pointer
+   * @param idx index of the manager's hazard pointer to retrieve
+   * @return managers's `idx`th hazard pointer
+   */
+  [[nodiscard]] std::atomic<void*>& getPointer(std::size_t idx) noexcept;
+
+  /**
+   * Check if any threads are using node
+   * @param nodePtr pointer to the node we want to check
+   * @return true if nodePtr is used by any thread and false otherwise
+   */
   [[nodiscard]] static bool isPointerInUse(const void* nodePtr);
 };
 
-// Retrieve hazard pointer
-std::atomic<void*>& getThreadHazardPointer();
+/**
+ * Get current thread's `idx`th hazard pointer
+ * @param idx index of the current thread's hazard pointer to retrieve
+ * @return current thread's `idx`th hazard pointer
+ */
+std::atomic<void*>& getThreadHazardPointer(std::size_t idx);
 
-// Check if any nodes are using ptr
+/**
+ * Check if any threads are using node
+ * @param nodePtr pointer to the node we want to check
+ * @return true if nodePtr is used by any thread and false otherwise
+ */
 bool anyThreadsUsingNode(const void* nodePtr);
 
-// RAII guard for acquiring a pointer with hazard indicating use and a
-// destructor that clears the hazard once it goes out of scope indicating we're
-// no longer using the acquired pointer
+/**
+ * RAII guard for acquiring a pointer with hazard indicating use and a
+ * destructor that clears the hazard once it goes out of scope indicating we're
+ * no longer using the acquired pointer
+ */
 class HazardGuard {
+  // --- Data members
+
+  // Index of the current thread's hazard pointer to clear upon going out of
+  // scope
+  std::size_t idx_;
+
  public:
-  HazardGuard() = default;
+  // --- Ctors, dtor, and assignment operations
+
+  /**
+   * Construct a hazard pointer RAII guard for clearing current thread's `idx`th
+   * hazard pointer when going out of scope
+   * @param idx index of the thread's hazard pointer to clear upon going out of
+   * scope
+   */
+  explicit HazardGuard(std::size_t idx);
+
+  // Prevent copy and move operations
   HazardGuard(const HazardGuard&) = delete;
   HazardGuard(HazardGuard&&) = delete;
   HazardGuard& operator=(const HazardGuard&) = delete;
   HazardGuard& operator=(HazardGuard&&) = delete;
+
+  /**
+   * Clear thread's `idx`th hazard pointer when going out of scope
+   */
   ~HazardGuard();
 
-  // Acquire a node pointer with the hazard indicating it's use
-  // NOTE: Caller is in charge of clearing hazard pointer when pointer is no
-  // longer in use so that the memory can be freed
-  // Retrieve this thread's hazard pointer
+  /**
+   * Acquire a node pointer with the hazard indicating its use
+   * @tparam T type that the atomic pointer points to
+   * @param atomic atomic pointer of the resource we want to retrieve and store
+   * in our hazard indicating current thread's use to other threads
+   * @param hpIdx index of the hazard pointer for the current thread
+   * @return a raw pointer to the memory location atomic points to
+   */
   template <typename T>
-  T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const {
-    std::atomic<void*>& hp{getThreadHazardPointer()};
+  T* acquirePointerWithHazard(const std::atomic<T*>& atomic,
+                              const std::size_t hpIdx) const {
+    // Retrieve current thread's `hpIdx`th hazard pointer
+    std::atomic<void*>& hp{getThreadHazardPointer(hpIdx)};
 
     // Continually fetch the atomic's pointer and try storing it in the hazard
     // pointer until we've successfully claimed use
