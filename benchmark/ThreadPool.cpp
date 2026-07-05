@@ -1,5 +1,5 @@
 #include <benchmark/benchmark.h>
-#include <threadweave/main.h>
+#include <threadweave/ThreadPool.h>
 
 #include <cstddef>
 #include <future>
@@ -35,7 +35,7 @@ const std::vector<int> randSample{makeRandSample()};
 }  // namespace
 
 static void ThreadWeavePoolBM(benchmark::State& state) {
-  ThreadWeave::Pool pool{};
+  ThreadWeave::ThreadPool pool{};
   std::vector<std::future<int>> futures{};
   futures.reserve(nTasks);
   std::vector<int> results{};

@@ -7,31 +7,54 @@
 namespace ThreadWeave::Internal {
 
 // Concept to check if the type has a raw next pointer
-template <typename T>
-concept HasRawNextPointer = requires(T t) {
-  { t.next } -> std::same_as<T*&>;
+template <typename Node>
+concept HasRawNextPointer = requires(Node node) {
+  { node.next } -> std::same_as<Node*&>;
 };
 
-template <typename T>
-concept HasAtomicNextPointer = requires(T t) {
-  { t.next } -> std::same_as<std::atomic<T*>&>;
+// Concept to check if the type has an atomic next pointer
+template <typename Node>
+concept HasAtomicNextPointer = requires(Node node) {
+  { node.next } -> std::same_as<std::atomic<Node*>&>;
 };
 
-// Simple aggregate for nodes of a singly linked list
+// Concept to check if the type has a raw retireNext pointer
+template <typename Node>
+concept HasRetireNextPointer = requires(Node node) {
+  { node.retireNext } -> std::same_as<Node*>;
+};
+
+/**
+ * Simple aggregate for nodes of a singly linked list to be used as the
+ * underlying implementation of a stack. The additional retire next pointer
+ * allows storage in a retirement list without introducing data races.
+ * @tparam T Type of data to store in the node
+ */
 template <typename T>
-struct SinglyLinkedListNode {
+struct StackNode {
   T data;
-  SinglyLinkedListNode* next;
+  StackNode* next;
+  StackNode* retireNext;
 };
 
-// Simple aggregate for nodes of a singly linked list with atomic next pointers
+/**
+ * Simple aggregate for nodes of a singly linked list to be used as the
+ * underlying implementation of a queue. The additional retire next pointer
+ * allows storage in a retirement list without introducing data races.
+ * @tparam T Type of data to store in the node
+ */
 template <typename T>
-struct AtomicSinglyLinkedListNode {
+struct QueueNode {
   T data;
-  std::atomic<AtomicSinglyLinkedListNode*> next;
+  std::atomic<QueueNode*> next;
+  QueueNode* retireNext;
 };
 
-// Delete all the nodes in a singly linked list
+/**
+ * Delete all the nodes in a singly linked list
+ * @tparam Node a generic node type for a singly linked list
+ * @param list a singly linked list
+ */
 template <typename Node>
   requires(HasRawNextPointer<Node> || HasAtomicNextPointer<Node>)
 void deleteNodes(Node* list) {

@@ -1,3 +1,4 @@
+#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 
 #include <atomic>
@@ -6,11 +7,11 @@
 
 namespace ThreadWeave::Internal {
 
-ThreadHazardManager::ThreadHazardManager() : poolIdx_{maxThreads} {
+ThreadHazardManager::ThreadHazardManager() : poolIdx_{MaxThreads} {
   // Search for the first available slot in our thread slot pool
-  for (std::size_t i{0}; i < maxThreads; ++i) {
+  for (Index i{0}; i < MaxThreads; ++i) {
     // Check ith slot to see if it's been claimed yet
-    auto& [id, ptrs]{pool[i]};
+    auto& [id, ptrs]{slotsPool[i]};
 
     // If the ID is unset, claim this slot and store this thread's ID
     if (std::thread::id emptyId{}; id.compare_exchange_strong(
@@ -23,7 +24,7 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{maxThreads} {
 
   // There are no available thread slots for the current thread, throw a runtime
   // error
-  if (poolIdx_ == maxThreads) {
+  if (poolIdx_ == MaxThreads) {
     throw std::runtime_error{"No available hazard pointers"};
   }
 }
@@ -31,7 +32,7 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{maxThreads} {
 ThreadHazardManager::~ThreadHazardManager() {
   // Clear the hazard pointers before clearing the ID so other threads can use
   // this thread slot
-  auto& [id, ptrs]{pool[poolIdx_]};
+  auto& [id, ptrs]{slotsPool[poolIdx_]};
 
   for (auto& ptr : ptrs) {
     ptr.store(nullptr, std::memory_order::relaxed);
@@ -40,13 +41,15 @@ ThreadHazardManager::~ThreadHazardManager() {
   id.store(std::thread::id{}, std::memory_order::release);
 }
 
-std::atomic<void*>& ThreadHazardManager::getPointer(
-    const std::size_t idx) noexcept {
-  return pool[poolIdx_].ptr[idx];
+// NOTE: Not marked as const because logically this is not const, the caller
+// retrieves an unprotected reference and likely will use it to store a new
+// memory address
+std::atomic<void*>& ThreadHazardManager::getPointer(const Index idx) noexcept {
+  return slotsPool[poolIdx_].ptr[idx];
 }
 
 bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) {
-  for (const auto& [id, ptrs] : pool) {
+  for (const auto& [id, ptrs] : slotsPool) {
     // Empty id indicates no use
     if (id.load(std::memory_order::relaxed) == std::thread::id{}) {
       continue;
@@ -63,7 +66,7 @@ bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) {
   return false;
 }
 
-std::atomic<void*>& getThreadHazardPointer(const std::size_t idx) {
+std::atomic<void*>& getThreadHazardPointer(const Index idx) {
   thread_local ThreadHazardManager manager{};
   return manager.getPointer(idx);
 }
@@ -72,7 +75,7 @@ bool anyThreadsUsingNode(const void* const nodePtr) {
   return ThreadHazardManager::isPointerInUse(nodePtr);
 }
 
-HazardGuard::HazardGuard(const std::size_t idx) : idx_{idx} {}
+HazardGuard::HazardGuard(const Index idx) : idx_{idx} {}
 
 HazardGuard::~HazardGuard() {
   std::atomic<void*>& hp{getThreadHazardPointer(idx_)};

@@ -1,8 +1,9 @@
 #ifndef TW_HAZARD_H
 #define TW_HAZARD_H
 
+#include <threadweave/Constants.h>
+
 #include <atomic>
-#include <cstddef>
 #include <thread>
 
 namespace ThreadWeave::Internal {
@@ -15,28 +16,18 @@ namespace ThreadWeave::Internal {
  * macro.
  */
 class ThreadHazardManager {
-#ifndef MAX_THREADS
-  // Default value, user can set via macro
-  static constexpr std::size_t maxThreads{64};
-#else
-  static_assert(MAX_THREADS > 0,
-                "Max number of threads should be a positive value");
-  static constexpr std::size_t maxThreads{MAX_THREADS};
-#endif
-
+  // Pool of thread slots and their associated IDs
   struct ThreadSlots {
     std::atomic<std::thread::id> id;
-    std::atomic<void*> ptr[2];  // 2 hazard pointers per thread
+    std::atomic<void*> ptr[HazardsPerThread];
   };
-
-  // Pool of thread slots and their associated IDs
-  static inline ThreadSlots pool[maxThreads]{};
+  static inline ThreadSlots slotsPool[MaxThreads]{};
 
   // --- Data members
-  std::size_t poolIdx_;  // manager's thread slot index
+  Index poolIdx_;  // manager's thread slot index
 
  public:
-  // --- Ctors, Dtor, and assignement
+  // --- Ctors, dtor, and assignement operators
 
   /**
    * Acquire a slot in the thread slot pool for current thread to indicate which
@@ -62,7 +53,7 @@ class ThreadHazardManager {
    * @param idx index of the manager's hazard pointer to retrieve
    * @return managers's `idx`th hazard pointer
    */
-  [[nodiscard]] std::atomic<void*>& getPointer(std::size_t idx) noexcept;
+  [[nodiscard]] std::atomic<void*>& getPointer(Index idx) noexcept;
 
   /**
    * Check if any threads are using node
@@ -77,7 +68,7 @@ class ThreadHazardManager {
  * @param idx index of the current thread's hazard pointer to retrieve
  * @return current thread's `idx`th hazard pointer
  */
-std::atomic<void*>& getThreadHazardPointer(std::size_t idx);
+std::atomic<void*>& getThreadHazardPointer(Index idx);
 
 /**
  * Check if any threads are using node
@@ -96,7 +87,7 @@ class HazardGuard {
 
   // Index of the current thread's hazard pointer to clear upon going out of
   // scope
-  std::size_t idx_;
+  Index idx_;
 
  public:
   // --- Ctors, dtor, and assignment operations
@@ -107,7 +98,7 @@ class HazardGuard {
    * @param idx index of the thread's hazard pointer to clear upon going out of
    * scope
    */
-  explicit HazardGuard(std::size_t idx);
+  explicit HazardGuard(Index idx);
 
   // Prevent copy and move operations
   HazardGuard(const HazardGuard&) = delete;
@@ -125,17 +116,15 @@ class HazardGuard {
    * @tparam T type that the atomic pointer points to
    * @param atomic atomic pointer of the resource we want to retrieve and store
    * in our hazard indicating current thread's use to other threads
-   * @param hpIdx index of the hazard pointer for the current thread
    * @return a raw pointer to the memory location atomic points to
    */
   template <typename T>
-  T* acquirePointerWithHazard(const std::atomic<T*>& atomic,
-                              const std::size_t hpIdx) const {
+  T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const {
     // Retrieve current thread's `hpIdx`th hazard pointer
-    std::atomic<void*>& hp{getThreadHazardPointer(hpIdx)};
+    std::atomic<void*>& hp{getThreadHazardPointer(idx_)};
 
     // Continually fetch the atomic's pointer and try storing it in the hazard
-    // pointer until we've successfully claimed use
+    // pointer until we've successfully indicated use
     T* node{atomic.load(std::memory_order::relaxed)};
     T* tmp{nullptr};
 

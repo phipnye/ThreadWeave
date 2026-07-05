@@ -1,43 +1,45 @@
 #ifndef TW_RETIRE_LIST_H
 #define TW_RETIRE_LIST_H
 
+#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
+#include <threadweave/StackOps.h>
 
 #include <atomic>
 
 namespace ThreadWeave::Internal {
 
-// Class for storing list of nodes that need to be freed later due to use by
-// other threads
+/**
+ * Class for storing list of nodes that need to be freed later due to use by
+ * other threads
+ * @tparam Node a linked list node type
+ */
 template <typename Node>
-  requires(HasRawNextPointer<Node>)
+  requires(HasRetireNextPointer<Node>)
 class RetireList {
   // --- Data members
-
-  // We have to wrap the nodes of a linked list with another node to prevent
-  // data races between CAS loop for pop operations and appending them to our
-  // retire list
-  using NodeWrapper = SinglyLinkedListNode<Node*>;
-
-  // List of nodes to be deleted later in the program
-  std::atomic<NodeWrapper*> tbdList_{nullptr};
+  std::atomic<Node*> tbdList_{nullptr};
 
  public:
   // --- Ctors, dtor, and assignment operators
 
-  // Default ctor
+  /**
+   * Default construct a retirement list
+   */
   RetireList() = default;
 
-  // Dtor
+  /**
+   * Free all memory associated with the to be deleted list
+   */
   ~RetireList() {
-    NodeWrapper* deleteList{tbdList_.load(std::memory_order::relaxed)};
+    Node* delList{tbdList_.load(std::memory_order::relaxed)};
 
-    while (deleteList) {
-      NodeWrapper* curr{deleteList};
-      deleteList = deleteList->next;
-      delete curr->data;  // Must delete underlying node
-      delete curr;        // And the node wrapping the node
+    while (delList) {
+      // ReSharper disable once CppLocalVariableMayBeConst
+      Node* const curr{delList};
+      delList = delList->retireNext;
+      delete curr;
     }
   }
 
@@ -49,61 +51,52 @@ class RetireList {
 
   // --- Member functions
 
-  // Check if the retire list is lock-free
-  [[nodiscard]] bool isLockFree() const { return tbdList_.is_lock_free(); }
-
-  // Check whether the underlying atomic types are always lock-free
-  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
-    return decltype(tbdList_)::is_always_lock_free;
+  /**
+   * Save node for later since it cannot be freed yet due to use by other nodes
+   * @param node pointer to a singly linked list node to store into the to be
+   * deleted list
+   */
+  void saveForLater(Node* node) noexcept {
+    stackPush<Node, &Node::retireNext>(tbdList_, node);
   }
 
-  // Save node for later since it cannot be freed yet due to use by other nodes
-  void saveForLater(Node* node) {
-    // Keep trying to prepend node to front of our list
-    NodeWrapper* newNodeWrapper{new NodeWrapper{
-        .data = node, .next = tbdList_.load(std::memory_order::relaxed)}};
-    while (!tbdList_.compare_exchange_weak(newNodeWrapper->next, newNodeWrapper,
-                                           std::memory_order::release,
-                                           std::memory_order::relaxed));
-  }
-
-  // Delete nodes after checking to make sure they are not being used by other
-  // threads
+  /**
+   * Delete nodes after checking to make sure they are not being used by other
+   * threads
+   */
   void deleteNodesChecked() {
     // Switch out "buffers" so other threads can write to member while this
     // thread operates on the "stolen" list of nodes
-    NodeWrapper* deleteList{
-        tbdList_.exchange(nullptr, std::memory_order::acq_rel)};
+    Node* delList{tbdList_.exchange(nullptr, std::memory_order::acq_rel)};
 
     // Store any nodes that we still cannot delete due to use by other threads
-    NodeWrapper* saveHead{nullptr};
-    NodeWrapper* saveTail{nullptr};
+    Node* saveHead{nullptr};
+    Node* saveTail{nullptr};
 
-    while (deleteList) {
-      NodeWrapper* curr{deleteList};
-      deleteList = deleteList->next;
-      curr->next = nullptr;
+    while (delList) {
+      Node* curr{delList};
+      delList = delList->retireNext;
+      curr->retireNext = nullptr;
 
       // Delete right away if no threads are using curr's data, otherwise,
       // append it to our list for saving later
-      if (!Internal::anyThreadsUsingNode(curr->data)) {
-        delete curr->data;
-        delete curr;
-      } else {
+      if (Internal::anyThreadsUsingNode(curr)) {
         if (saveTail) {
-          saveTail->next = curr;
-          saveTail = saveTail->next;
+          saveTail->retireNext = curr;
+          saveTail = saveTail->retireNext;
         } else {
           saveHead = curr;
           saveTail = curr;
         }
+      } else {
+        delete curr;
       }
     }
 
     // Save out list of nodes that still couldn't be deleted
     if (saveTail) {
-      saveTail->next = tbdList_.load(std::memory_order::relaxed);
-      while (!tbdList_.compare_exchange_weak(saveTail->next, saveHead,
+      saveTail->retireNext = tbdList_.load(std::memory_order::relaxed);
+      while (!tbdList_.compare_exchange_weak(saveTail->retireNext, saveHead,
                                              std::memory_order::release,
                                              std::memory_order::relaxed));
     }

@@ -4,6 +4,8 @@
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/RetireList.h>
+#include <threadweave/StackOps.h>
+#include <threadweave/ThreadPool.h>
 
 #include <atomic>
 #include <optional>
@@ -12,24 +14,31 @@
 
 namespace ThreadWeave {
 
-// A thread-safe lock-free stack
+/**
+ * An implementation of a lock-free (Treiber) stack data structure
+ * @tparam T type of the object to store in the stack
+ */
 template <typename T>
   requires(std::is_nothrow_move_constructible_v<T>)
 class Stack {
   // --- Data members
-  using Node = Internal::SinglyLinkedListNode<T>;
-  std::atomic<Node*> head_{nullptr};
-  Internal::RetireList<Node*> toBeDeleted_{};
+  using Node = Internal::StackNode<T>;
+  alignas(Internal::AlignSize) std::atomic<Node*> head_{nullptr};
+  alignas(Internal::AlignSize) Internal::RetireList<Node*> toBeDeleted_{};
 
  public:
   // --- Ctors, dtor, and assignment operators
 
-  // Default ctor
+  /**
+   * Default construct a Treiber stack
+   */
   Stack() = default;
 
-  // Dtor
+  /**
+   * Free all memory associated with the stack
+   */
   ~Stack() {
-    // To be executed in single-threaded context, relaxed is sufficient
+    // Note that toBeDeleted_ cleans up after itself
     Internal::deleteNodes(head_.load(std::memory_order::relaxed));
   }
 
@@ -41,61 +50,43 @@ class Stack {
 
   // --- Member functions
 
-  // Check if the stack is lock-free
-  [[nodiscard]] bool isLockFree() const {
-    return head_.is_lock_free() && toBeDeleted_.isLockFree();
-  }
-
-  // Check whether the underlying atomic types are always lock-free
-  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
-    return decltype(head_)::is_always_lock_free &&
-           toBeDeleted_.isAlwaysLockFree();
-  }
-
-  // Push data onto the top of the stack
+  /**
+   * Push data to the top of the stack
+   * @param data data to be inserted on top of the stack
+   */
   void push(T data) {
-    // Generate new node
-    Node* newNode{new Node{.data = std::move(data),
-                           .next = head_.load(std::memory_order::relaxed)}};
-
-    // Continually try to assign new node as the head
-    while (!head_.compare_exchange_weak(newNode->next, newNode,
-                                        std::memory_order::release,
-                                        std::memory_order::relaxed));
+    Internal::stackPush<Node, &Node::next>(
+        head_,
+        new Node{
+            .data = std::move(data), .next = nullptr, .retireNext = nullptr});
   }
 
-  // Pop data from the top of the stack
+  /**
+   * Pop data from the top of the stack
+   * @return data popped from the stack (will be std::nullopt if the stack is
+   * empty)
+   */
   std::optional<T> pop() {
     // Pointer to node on top of the stack
-    Node* popNode{nullptr};
+    Node* popNode{Internal::stackPop<Node, &Node::next>(head_)};
 
-    {
-      // Use an RAII guard for clearing hazard pointer when node is no longer in
-      // use
-      Internal::HazardGuard hzrdGuard{};
-
-      do {
-        // Acquire pointer to node on top of the stack with thread's hazard
-        // pointer pointing to it so that no other threads delete while acessing
-        popNode = hzrdGuard.acquirePointerWithHazard(head_);
-      } while (popNode &&
-               !head_.compare_exchange_strong(popNode, popNode->next,
-                                              std::memory_order::acquire,
-                                              std::memory_order::relaxed));
-    }
-
-    // Data should be no throw move constructible and std::optional
-    // requires no heap allocation so this should be safe
+    // Data should be no throw move constructible and std::optional requires no
+    // heap allocation so this should be safe. Note that it is safe to
+    // dereference popNode at this point. Only the current thread could've
+    // gotten out of the CAS loop with popNode unlinked from the list. Thus,
+    // while other threads may have a pointer pointing to same memory location,
+    // they are stuck in the CAS loop and only this thread can delete it or add
+    // it to the retire list which happens after this operation.
     std::optional<T> res{popNode ? std::make_optional(std::move(popNode->data))
                                  : std::nullopt};
 
     if (popNode) {
       // Save the popped node for later if other threads are using it, otherwise
       // delete it immediately
-      if (!Internal::anyThreadsUsingNode(popNode)) {
-        delete popNode;
-      } else {
+      if (Internal::anyThreadsUsingNode(popNode)) {
         toBeDeleted_.saveForLater(popNode);
+      } else {
+        delete popNode;
       }
 
       // Try deleting any nodes we previously saved for later

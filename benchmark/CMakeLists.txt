@@ -8,5 +8,5 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(googlebenchmark)
-add_executable(BenchProgram Pool.cpp)
+add_executable(BenchProgram ThreadPool.cpp)
 target_link_libraries(BenchProgram PRIVATE ThreadWeave benchmark::benchmark)

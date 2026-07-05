@@ -12,7 +12,7 @@
 
 namespace ThreadWeave {
 
-class Pool {
+class ThreadPool {
   // Type aliases
   using Task = std::move_only_function<void()>;
 
@@ -27,16 +27,16 @@ class Pool {
   // --- Ctors, Assignment, and Dtor
 
   // Ctor with user-defined number of threads
-  explicit Pool(unsigned nThreads = std::thread::hardware_concurrency());
+  explicit ThreadPool(unsigned nThreads = std::thread::hardware_concurrency());
 
   // Remove copy and move ops
-  Pool(const Pool&) = delete;
-  Pool(Pool&&) = delete;
-  Pool& operator=(const Pool&) = delete;
-  Pool& operator=(Pool&&) = delete;
+  ThreadPool(const ThreadPool&) = delete;
+  ThreadPool(ThreadPool&&) = delete;
+  ThreadPool& operator=(const ThreadPool&) = delete;
+  ThreadPool& operator=(ThreadPool&&) = delete;
 
   // Dtor
-  ~Pool();
+  ~ThreadPool();
 
   // --- Member functions
 

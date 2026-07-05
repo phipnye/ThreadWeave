@@ -1,4 +1,4 @@
-#include <threadweave/main.h>
+#include <threadweave/ThreadPool.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -12,7 +12,7 @@
 namespace ThreadWeave {
 
 // Ctor
-Pool::Pool(unsigned nThreads) {
+ThreadPool::ThreadPool(unsigned nThreads) {
   // Make sure at least one thread
   nThreads = std::max(nThreads, 1u);
   workers_.reserve(nThreads);
@@ -46,7 +46,7 @@ Pool::Pool(unsigned nThreads) {
 }
 
 // Dtor
-Pool::~Pool() {
+ThreadPool::~ThreadPool() {
   // Indicate to workers that they can stop
   {
     std::lock_guard lock{mutex_};

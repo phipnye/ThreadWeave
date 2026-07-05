@@ -1,6 +1,7 @@
 #ifndef TW_QUEUE_H
 #define TW_QUEUE_H
 
+#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/RetireList.h>
@@ -11,25 +12,34 @@
 
 namespace ThreadWeave {
 
+/**
+ * An implementation of a lock-free (Michael-Scott) queue data structure
+ * @tparam T type of the object to store in the queue
+ */
 template <typename T>
   requires(std::is_nothrow_move_constructible_v<T>)
 class Queue {
   // --- Data members
-  using Node = Internal::AtomicSinglyLinkedListNode<std::optional<T>>;
-  std::atomic<Node*> head_;
-  std::atomic<Node*> tail_;
-  Internal::RetireList<Node*> toBeDeleted_{};
+  using Node = Internal::QueueNode<std::optional<T>>;
+  alignas(Internal::AlignSize) std::atomic<Node*> head_;
+  alignas(Internal::AlignSize) std::atomic<Node*> tail_;
+  alignas(Internal::AlignSize) Internal::RetireList<Node*> toBeDeleted_{};
 
  public:
   // --- Ctor, dtor, and assignment operators
 
-  // Default ctor
+  // Default construct a Michael-Scott queue
   Queue()
-      : head_{new Node{.data = std::nullopt, .next = nullptr}},  // dummy
+      : head_{new Node{.data = std::nullopt,
+                       .next = nullptr,
+                       .retireNext = nullptr}},  // dummy
         tail_{head_.load(std::memory_order::relaxed)} {}
 
   // Dtor
-  ~Queue() { Internal::deleteNodes(head_); }
+  ~Queue() {
+    // Note that toBeDeleted_ cleans up after itself
+    Internal::deleteNodes(head_.load(std::memory_order::relaxed));
+  }
 
   // Prevent copy and move operations
   Queue(const Queue&) = delete;
@@ -39,26 +49,16 @@ class Queue {
 
   // --- Member functions
 
-  // Check if the queue is lock-free
-  [[nodiscard]] bool isLockFree() const {
-    return head_.is_lock_free() && toBeDeleted_.isLockFree();
-  }
-
-  // Check whether the underlying atomic types are always lock-free
-  [[nodiscard]] constexpr bool isAlwaysLockFree() const {
-    return decltype(head_)::is_always_lock_free &&
-           toBeDeleted_.isAlwaysLockFree();
-  }
-
   // Add data to back of queue
   void push(T data) {
     // Construct new node to store data
-    Node* newNode{new Node{.data = std::move(data), .next = nullptr}};
+    Node* pushNode{new Node{
+        .data = std::move(data), .next = nullptr, .retireNext = nullptr}};
 
     while (true) {
       // Use an RAII guard for clearing hazard pointer when held tail pointer is
       // no longer in use
-      Internal::HazardGuard hzrdGuard{};
+      const Internal::HazardGuard hzrdGuard{0};
       Node* tailPtr{hzrdGuard.acquirePointerWithHazard(tail_)};
       std::atomic<Node*>& nextAtomic{tailPtr->next};
       Node* nextPtr{nextAtomic.load(std::memory_order::acquire)};
@@ -73,12 +73,12 @@ class Queue {
 
       // If our tail's next pointer now points to null, we can finally try
       // attaching it to the end of our list and then try moving the chain along
-      else if (nextAtomic.compare_exchange_strong(nextPtr, newNode,
+      else if (nextAtomic.compare_exchange_strong(nextPtr, pushNode,
                                                   std::memory_order::release,
                                                   std::memory_order::relaxed)) {
         // Try updating tail to move further down the chain (failures will get
         // resolved by later operations that push further down the chain)
-        tail_.compare_exchange_weak(tailPtr, newNode,
+        tail_.compare_exchange_weak(tailPtr, pushNode,
                                     std::memory_order::release,
                                     std::memory_order::relaxed);
         return;
@@ -88,6 +88,7 @@ class Queue {
 
   // Get and pop data from our queue
   std::optional<T> pop() {
+    // TO DO ---------------
     // Pointer to the node being popped
     Node* popNode{nullptr};
 

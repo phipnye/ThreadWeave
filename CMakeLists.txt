@@ -23,13 +23,13 @@ set(COMPILER_FLAGS
 add_library(ThreadWeave STATIC)
 target_sources(ThreadWeave
         PRIVATE
-        src/Pool.cpp
         src/Hazard.cpp
+        src/ThreadPool.cpp
 
         PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
-        FILES include/threadweave/main.h
+        FILES include/threadweave/ThreadPool.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 
