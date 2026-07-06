@@ -40,13 +40,13 @@ template <typename Node, Node* Node::* NextPtr>
 Node* stackPop(std::atomic<Node*>& head) {
   // Use an RAII guard for clearing hazard pointer when node is no longer in
   // use
-  const HazardGuard hzrdGuard{0};
+  const HazardGuard<0> headGuard{};
   Node* popNode{nullptr};
 
   do {
     // Acquire pointer pointing to head node with a hazard pointer indicating
     // current thread's use
-    popNode = hzrdGuard.acquirePointerWithHazard(head);
+    popNode = headGuard.acquirePointerWithHazard(head);
   } while (popNode &&
            !head.compare_exchange_strong(popNode, popNode->*NextPtr,
                                          std::memory_order::acquire,

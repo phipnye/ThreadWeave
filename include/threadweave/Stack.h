@@ -55,10 +55,8 @@ class Stack {
    * @param data data to be inserted on top of the stack
    */
   void push(T data) {
-    Internal::stackPush<Node, &Node::next>(
-        head_,
-        new Node{
-            .data = std::move(data), .next = nullptr, .retireNext = nullptr});
+    Internal::stackPush<Node, &Node::next>(head_,
+                                           new Node{.data = std::move(data)});
   }
 
   /**
@@ -94,6 +92,14 @@ class Stack {
     }
 
     return res;
+  }
+
+  /**
+   * Check if the stack is empty.
+   * @return true if the stack is empty and false otherwise
+   */
+  [[nodiscard]] bool empty() const {
+    return head_.load(std::memory_order::relaxed) == nullptr;
   }
 };
 

@@ -82,12 +82,10 @@ bool anyThreadsUsingNode(const void* nodePtr);
  * destructor that clears the hazard once it goes out of scope indicating we're
  * no longer using the acquired pointer
  */
+template <Index idx>
 class HazardGuard {
-  // --- Data members
-
-  // Index of the current thread's hazard pointer to clear upon going out of
-  // scope
-  Index idx_;
+  static_assert(idx >= 0 && idx < HazardsPerThread,
+                "Out-of-bounds hazard index");
 
  public:
   // --- Ctors, dtor, and assignment operations
@@ -95,10 +93,8 @@ class HazardGuard {
   /**
    * Construct a hazard pointer RAII guard for clearing current thread's `idx`th
    * hazard pointer when going out of scope
-   * @param idx index of the thread's hazard pointer to clear upon going out of
-   * scope
    */
-  explicit HazardGuard(Index idx);
+  HazardGuard() = default;
 
   // Prevent copy and move operations
   HazardGuard(const HazardGuard&) = delete;
@@ -109,7 +105,10 @@ class HazardGuard {
   /**
    * Clear thread's `idx`th hazard pointer when going out of scope
    */
-  ~HazardGuard();
+  ~HazardGuard() {
+    std::atomic<void*>& hp{getThreadHazardPointer(idx)};
+    hp.store(nullptr, std::memory_order::release);
+  }
 
   /**
    * Acquire a node pointer with the hazard indicating its use
@@ -120,8 +119,8 @@ class HazardGuard {
    */
   template <typename T>
   T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const {
-    // Retrieve current thread's `hpIdx`th hazard pointer
-    std::atomic<void*>& hp{getThreadHazardPointer(idx_)};
+    // Retrieve current thread's `idx`th hazard pointer
+    std::atomic<void*>& hp{getThreadHazardPointer(idx)};
 
     // Continually fetch the atomic's pointer and try storing it in the hazard
     // pointer until we've successfully indicated use

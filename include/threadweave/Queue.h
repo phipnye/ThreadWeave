@@ -17,7 +17,8 @@ namespace ThreadWeave {
  * @tparam T type of the object to store in the queue
  */
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 class Queue {
   // --- Data members
   using Node = Internal::QueueNode<std::optional<T>>;
@@ -28,14 +29,16 @@ class Queue {
  public:
   // --- Ctor, dtor, and assignment operators
 
-  // Default construct a Michael-Scott queue
+  /**
+   * Default construct a Michael-Scott queue
+   */
   Queue()
-      : head_{new Node{.data = std::nullopt,
-                       .next = nullptr,
-                       .retireNext = nullptr}},  // dummy
+      : head_{new Node{.data = std::nullopt}},  // dummy
         tail_{head_.load(std::memory_order::relaxed)} {}
 
-  // Dtor
+  /**
+   * Free memory associated with the underlying linked list
+   */
   ~Queue() {
     // Note that toBeDeleted_ cleans up after itself
     Internal::deleteNodes(head_.load(std::memory_order::relaxed));
@@ -49,17 +52,19 @@ class Queue {
 
   // --- Member functions
 
-  // Add data to back of queue
+  /**
+   * Add data to back of queue
+   * @param data data to store in the queue
+   */
   void push(T data) {
     // Construct new node to store data
-    Node* pushNode{new Node{
-        .data = std::move(data), .next = nullptr, .retireNext = nullptr}};
+    Node* pushNode{new Node{.data = std::move(data)}};
 
     while (true) {
       // Use an RAII guard for clearing hazard pointer when held tail pointer is
       // no longer in use
-      const Internal::HazardGuard hzrdGuard{0};
-      Node* tailPtr{hzrdGuard.acquirePointerWithHazard(tail_)};
+      const Internal::HazardGuard<0> tailGuard{};
+      Node* tailPtr{tailGuard.acquirePointerWithHazard(tail_)};
       std::atomic<Node*>& nextAtomic{tailPtr->next};
       Node* nextPtr{nextAtomic.load(std::memory_order::acquire)};
 
@@ -69,13 +74,14 @@ class Queue {
         tail_.compare_exchange_strong(tailPtr, nextPtr,
                                       std::memory_order::release,
                                       std::memory_order::relaxed);
+        continue;
       }
 
       // If our tail's next pointer now points to null, we can finally try
       // attaching it to the end of our list and then try moving the chain along
-      else if (nextAtomic.compare_exchange_strong(nextPtr, pushNode,
-                                                  std::memory_order::release,
-                                                  std::memory_order::relaxed)) {
+      if (nextAtomic.compare_exchange_strong(nextPtr, pushNode,
+                                             std::memory_order::release,
+                                             std::memory_order::relaxed)) {
         // Try updating tail to move further down the chain (failures will get
         // resolved by later operations that push further down the chain)
         tail_.compare_exchange_weak(tailPtr, pushNode,
@@ -86,57 +92,84 @@ class Queue {
     }
   }
 
-  // Get and pop data from our queue
+  /**
+   * Pop and return data from the front of the queue
+   * @return data from the front of the queue or std::nullopt if queue is empty
+   */
   std::optional<T> pop() {
-    // TO DO ---------------
-    // Pointer to the node being popped
-    Node* popNode{nullptr};
+    // Pointer to the popped node
+    Node* oldDummy{nullptr};
 
-    {
-      // Head is fixed dummy node so acquiring next is always safe
-      std::atomic<Node*>& headNext{
-          head_.load(std::memory_order::acquire)->next};
+    while (true) {
+      // Acquire head and head->next pointers with hazard pointers indicating
+      // use
+      const Internal::HazardGuard<0> headGuard{};
+      const Internal::HazardGuard<1> nextGuard{};
+      Node* headPtr{headGuard.acquirePointerWithHazard(head_)};
+      Node* nextPtr{nextGuard.acquirePointerWithHazard(headPtr->next)};
 
-      // Use an RAII guard for clearing hazard pointer once we've acquired and
-      // unlinked it from the list
-      Internal::HazardGuard hzrdGuard{};
-
-      do {
-        // Acquire pointer to node at front of queue with thread's hazard
-        // pointer pointing to it so that no other threads delete while acessing
-        popNode = hzrdGuard.acquirePointerWithHazard(headNext);
-      } while (popNode &&
-               !headNext.compare_exchange_strong(
-                   popNode, popNode->next.load(std::memory_order::acquire),
-                   std::memory_order::acquire, std::memory_order::relaxed));
-    }
-
-    // Data should be no throw move constructible and std::optional
-    // requires no heap allocation so this should be safe
-    std::optional<T> res{popNode ? std::move(popNode->data) : std::nullopt};
-
-    if (popNode) {
-      // In the case where the queue becomes empty and we just stole the last
-      // element, we must update tail to point back at the dummy
-      Node* expectedTail{popNode};
-      Node* dummy{head_.load(std::memory_order::relaxed)};
-      tail_.compare_exchange_strong(expectedTail, dummy,
-                                    std::memory_order::release,
-                                    std::memory_order::relaxed);
-
-      // Save the popped node for later if other threads are using it, otherwise
-      // delete it immediately
-      if (!Internal::anyThreadsUsingNode(popNode)) {
-        delete popNode;
-      } else {
-        toBeDeleted_.saveForLater(popNode);
+      // Make sure headPtr is still aligned with head_ atomic
+      if (headPtr != head_.load(std::memory_order::acquire)) {
+        continue;
       }
 
-      // Try deleting any nodes we previously saved for later
-      toBeDeleted_.deleteNodesChecked();
+      // Empty queue
+      if (nextPtr == nullptr) {
+        return std::nullopt;
+      }
+
+      // If the head and tail point to the same node, the tail is lagging and
+      // needs to be pushed along
+      if (tail_.load(std::memory_order::acquire) == headPtr) {
+        tail_.compare_exchange_strong(headPtr, nextPtr,
+                                      std::memory_order::release,
+                                      std::memory_order::relaxed);
+        continue;
+      }
+
+      // Try exchaning the current head with next. If successful, we've popped
+      // the node and can return its data
+      if (head_.compare_exchange_strong(headPtr, nextPtr,
+                                        std::memory_order::acquire,
+                                        std::memory_order::relaxed)) {
+        // Store the old dummy node so we can retire it and steal the data from
+        // the new dummy for our return value
+        oldDummy = headPtr;
+        oldDummy->data = std::move(nextPtr->data);  // T is no throw move assign
+        break;
+      }
     }
 
+    // Data should be no throw move constructible and std::optional requires no
+    // heap allocation so this should be safe. Note that it is safe to
+    // dereference oldDummy at this point. Only the current thread could've
+    // gotten out of the CAS loop with oldDummy unlinked from the list. Thus,
+    // while other threads may have a pointer pointing to same memory location,
+    // they are stuck in the CAS loop and only this thread can delete it or add
+    // it to the retire list which happens after this operation.
+    std::optional<T> res{std::make_optional(std::move(oldDummy->data))};
+
+    // Save the removed node for later if other threads are using it, otherwise
+    // delete it immediately
+    if (Internal::anyThreadsUsingNode(oldDummy)) {
+      toBeDeleted_.saveForLater(oldDummy);
+    } else {
+      delete oldDummy;
+    }
+
+    // Try deleting any nodes we previously saved for later
+    toBeDeleted_.deleteNodesChecked();
     return res;
+  }
+
+  /**
+   * Check if the queue is empty.
+   * @return true if the queue is empty and false otherwise
+   */
+  [[nodiscard]] bool empty() const {
+    const Internal::HazardGuard<0> headGuard{};
+    Node* headPtr{headGuard.acquirePointerWithHazard(head_)};
+    return headPtr->next.load(std::memory_order::relaxed) == nullptr;
   }
 };
 

@@ -75,11 +75,4 @@ bool anyThreadsUsingNode(const void* const nodePtr) {
   return ThreadHazardManager::isPointerInUse(nodePtr);
 }
 
-HazardGuard::HazardGuard(const Index idx) : idx_{idx} {}
-
-HazardGuard::~HazardGuard() {
-  std::atomic<void*>& hp{getThreadHazardPointer(idx_)};
-  hp.store(nullptr, std::memory_order::release);
-}
-
 }  // namespace ThreadWeave::Internal
