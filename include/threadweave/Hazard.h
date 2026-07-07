@@ -105,10 +105,7 @@ class HazardGuard {
   /**
    * Clear thread's `idx`th hazard pointer when going out of scope
    */
-  ~HazardGuard() {
-    std::atomic<void*>& hp{getThreadHazardPointer(idx)};
-    hp.store(nullptr, std::memory_order::release);
-  }
+  ~HazardGuard();
 
   /**
    * Acquire a node pointer with the hazard indicating its use
@@ -118,24 +115,35 @@ class HazardGuard {
    * @return a raw pointer to the memory location atomic points to
    */
   template <typename T>
-  T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const {
-    // Retrieve current thread's `idx`th hazard pointer
-    std::atomic<void*>& hp{getThreadHazardPointer(idx)};
-
-    // Continually fetch the atomic's pointer and try storing it in the hazard
-    // pointer until we've successfully indicated use
-    T* node{atomic.load(std::memory_order::relaxed)};
-    T* tmp{nullptr};
-
-    do {
-      tmp = node;
-      hp.store(tmp, std::memory_order::seq_cst);
-      node = atomic.load(std::memory_order::acquire);
-    } while (node != tmp);
-
-    return node;
-  }
+  T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const;
 };
+
+template <Index idx>
+HazardGuard<idx>::~HazardGuard() {
+  std::atomic<void*>& hp{getThreadHazardPointer(idx)};
+  hp.store(nullptr, std::memory_order::release);
+}
+
+template <Index idx>
+template <typename T>
+T* HazardGuard<idx>::acquirePointerWithHazard(
+    const std::atomic<T*>& atomic) const {
+  // Retrieve current thread's `idx`th hazard pointer
+  std::atomic<void*>& hp{getThreadHazardPointer(idx)};
+
+  // Continually fetch the atomic's pointer and try storing it in the hazard
+  // pointer until we've successfully indicated use
+  T* node{atomic.load(std::memory_order::relaxed)};
+  T* tmp{nullptr};
+
+  do {
+    tmp = node;
+    hp.store(tmp, std::memory_order::seq_cst);
+    node = atomic.load(std::memory_order::acquire);
+  } while (node != tmp);
+
+  return node;
+}
 
 }  // namespace ThreadWeave::Internal
 

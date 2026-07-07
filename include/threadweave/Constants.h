@@ -11,7 +11,8 @@ using Index = std::ptrdiff_t;
 
 // Alignment to prevent false sharing
 #ifdef __cpp_lib_hardware_interference_size
-inline constexpr Index AlignSize{std::hardware_destructive_interference_size};
+inline constexpr Index CacheLineSize{
+    std::hardware_destructive_interference_size};
 #else
 inline constexpr Index AlignSize{128};
 #endif

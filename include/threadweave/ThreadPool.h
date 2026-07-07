@@ -8,6 +8,7 @@
 #include <queue>
 #include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace ThreadWeave {
@@ -44,23 +45,27 @@ class ThreadPool {
   // given task
   template <typename F, typename... Args>
   auto emplace(F&& f, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>> {
-    // Capture task and future storing result of task
-    using ReturnType = std::invoke_result_t<F, Args...>;
-    std::packaged_task<ReturnType()> task{
-        std::bind(std::forward<F>(f), std::forward<Args>(args)...)};
-    std::future<ReturnType> taskFuture{task.get_future()};
-
-    // Push task onto tasks queue and notify an available thread of the task
-    {
-      std::lock_guard lock{mutex_};
-      tasks_.emplace([task = std::move(task)]() mutable { task(); });
-    }
-
-    cv_.notify_one();
-    return taskFuture;
-  }
+      -> std::future<std::invoke_result_t<F, Args...>>;
 };
+
+template <typename F, typename... Args>
+auto ThreadPool::emplace(F&& f, Args&&... args)
+    -> std::future<std::invoke_result_t<F, Args...>> {
+  // Capture task and future storing result of task
+  using ReturnType = std::invoke_result_t<F, Args...>;
+  std::packaged_task<ReturnType()> task{
+      std::bind(std::forward<F>(f), std::forward<Args>(args)...)};
+  std::future<ReturnType> taskFuture{task.get_future()};
+
+  // Push task onto tasks queue and notify an available thread of the task
+  {
+    std::lock_guard lock{mutex_};
+    tasks_.emplace([task = std::move(task)]() mutable { task(); });
+  }
+
+  cv_.notify_one();
+  return taskFuture;
+}
 
 }  // namespace ThreadWeave
 

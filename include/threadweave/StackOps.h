@@ -8,16 +8,12 @@
 namespace ThreadWeave::Internal {
 
 /**
- */
-
-/**
  * Lock-free push to the top of a stack
  * @tparam Node A singly linked list Node type
- * @tparam NextPtr A data member indicating which next pointer we should link
- * (link to retire or regular next)
+ * @tparam NextPtr A pointer-to-member indicating which next pointer to link
  * @param head Head to a singly linked list serving as the underlying stack
  * implementation
- * @param pushNode Node the push to the top of the stack
+ * @param pushNode Node to push to the top of the stack
  */
 template <typename Node, Node* Node::* NextPtr>
 void stackPush(std::atomic<Node*>& head, Node* pushNode) {

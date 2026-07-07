@@ -1,7 +1,6 @@
 #ifndef TW_RETIRE_LIST_H
 #define TW_RETIRE_LIST_H
 
-#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/StackOps.h>
@@ -32,16 +31,7 @@ class RetireList {
   /**
    * Free all memory associated with the to be deleted list
    */
-  ~RetireList() {
-    Node* delList{tbdList_.load(std::memory_order::relaxed)};
-
-    while (delList) {
-      // ReSharper disable once CppLocalVariableMayBeConst
-      Node* const curr{delList};
-      delList = delList->retireNext;
-      delete curr;
-    }
-  }
+  ~RetireList();
 
   // Prevent copy and move operations
   RetireList(const RetireList&) = delete;
@@ -56,52 +46,73 @@ class RetireList {
    * @param node pointer to a singly linked list node to store into the to be
    * deleted list
    */
-  void saveForLater(Node* node) noexcept {
-    stackPush<Node, &Node::retireNext>(tbdList_, node);
-  }
+  void saveForLater(Node* node) noexcept;
 
   /**
    * Delete nodes after checking to make sure they are not being used by other
    * threads
    */
-  void deleteNodesChecked() {
-    // Switch out "buffers" so other threads can write to member while this
-    // thread operates on the "stolen" list of nodes
-    Node* delList{tbdList_.exchange(nullptr, std::memory_order::acq_rel)};
+  void deleteNodesChecked();
+};
 
-    // Store any nodes that we still cannot delete due to use by other threads
-    Node* saveHead{nullptr};
-    Node* saveTail{nullptr};
+template <typename Node>
+  requires(HasRetireNextPointer<Node>)
+RetireList<Node>::~RetireList() {
+  Node* delList{tbdList_.load(std::memory_order::relaxed)};
 
-    while (delList) {
-      Node* curr{delList};
-      delList = delList->retireNext;
-      curr->retireNext = nullptr;
+  while (delList) {
+    // ReSharper disable once CppLocalVariableMayBeConst
+    Node* const curr{delList};
+    delList = delList->retireNext;
+    delete curr;
+  }
+}
 
-      // Delete right away if no threads are using curr's data, otherwise,
-      // append it to our list for saving later
-      if (Internal::anyThreadsUsingNode(curr)) {
-        if (saveTail) {
-          saveTail->retireNext = curr;
-          saveTail = saveTail->retireNext;
-        } else {
-          saveHead = curr;
-          saveTail = curr;
-        }
+template <typename Node>
+  requires(HasRetireNextPointer<Node>)
+void RetireList<Node>::saveForLater(Node* node) noexcept {
+  stackPush<Node, &Node::retireNext>(tbdList_, node);
+}
+
+template <typename Node>
+  requires(HasRetireNextPointer<Node>)
+void RetireList<Node>::deleteNodesChecked() {
+  // Switch out "buffers" so other threads can write to member while this
+  // thread operates on the "stolen" list of nodes
+  Node* delList{tbdList_.exchange(nullptr, std::memory_order::acquire)};
+
+  // Store any nodes that we still cannot delete due to use by other threads
+  Node* saveHead{nullptr};
+  Node* saveTail{nullptr};
+
+  while (delList) {
+    Node* curr{delList};
+    delList = delList->retireNext;
+    curr->retireNext = nullptr;
+
+    // Delete right away if no threads are using curr's data, otherwise,
+    // append it to our list for saving later
+    if (anyThreadsUsingNode(curr)) {
+      if (saveTail) {
+        saveTail->retireNext = curr;
+        saveTail = saveTail->retireNext;
       } else {
-        delete curr;
+        saveHead = curr;
+        saveTail = curr;
       }
-    }
-
-    // Save out list of nodes that still couldn't be deleted
-    if (saveTail) {
-      saveTail->retireNext = tbdList_.load(std::memory_order::relaxed);
-      while (!tbdList_.compare_exchange_weak(saveTail->retireNext, saveHead,
-                                             std::memory_order::release,
-                                             std::memory_order::relaxed));
+    } else {
+      delete curr;
     }
   }
-};
+
+  // Save out list of nodes that still couldn't be deleted
+  if (saveTail) {
+    saveTail->retireNext = tbdList_.load(std::memory_order::relaxed);
+    while (!tbdList_.compare_exchange_weak(saveTail->retireNext, saveHead,
+                                           std::memory_order::release,
+                                           std::memory_order::relaxed));
+  }
+}
 
 }  // namespace ThreadWeave::Internal
 
