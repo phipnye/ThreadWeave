@@ -169,7 +169,7 @@ std::optional<T> Queue<T>::pop() {
   // while other threads may have a pointer pointing to same memory location,
   // they are stuck in the CAS loop and only this thread can delete it or add
   // it to the retire list which happens after this operation.
-  std::optional<T> res{std::make_optional(std::move(oldDummy->data))};
+  std::optional<T> res{std::move(oldDummy->data)};
 
   // Save the removed node for later if other threads are using it, otherwise
   // delete it immediately

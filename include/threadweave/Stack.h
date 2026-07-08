@@ -94,8 +94,7 @@ std::optional<T> Stack<T>::pop() {
   // while other threads may have a pointer pointing to same memory location,
   // they are stuck in the CAS loop and only this thread can delete it or add
   // it to the retire list which happens after this operation.
-  std::optional<T> res{popNode ? std::make_optional(std::move(popNode->data))
-                               : std::nullopt};
+  std::optional<T> res{popNode ? std::move(popNode->data) : std::nullopt};
 
   if (popNode) {
     // Save the popped node for later if other threads are using it, otherwise
