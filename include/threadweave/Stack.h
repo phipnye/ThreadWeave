@@ -24,7 +24,7 @@ class Stack {
   // --- Data members
   using Node = Internal::StackNode<T>;
   alignas(Internal::CacheLineSize) std::atomic<Node*> head_{nullptr};
-  alignas(Internal::CacheLineSize) Internal::RetireList<Node*> toBeDeleted_{};
+  alignas(Internal::CacheLineSize) Internal::RetireList<Node> toBeDeleted_{};
 
  public:
   // --- Ctors, dtor, and assignment operators
@@ -64,7 +64,7 @@ class Stack {
    * Check if the stack is empty.
    * @return true if the stack is empty and false otherwise
    */
-  [[nodiscard]] bool empty() const;
+  bool empty() const;
 };
 
 template <typename T>
@@ -77,8 +77,10 @@ Stack<T>::~Stack() {
 template <typename T>
   requires(std::is_nothrow_move_constructible_v<T>)
 void Stack<T>::push(T data) {
-  Internal::stackPush<Node, &Node::next>(head_,
-                                         new Node{.data = std::move(data)});
+  Internal::stackPush<Node, &Node::next>(
+      head_,
+      new Node{
+          .data = std::move(data), .next = nullptr, .retireNext = nullptr});
 }
 
 template <typename T>
@@ -94,7 +96,8 @@ std::optional<T> Stack<T>::pop() {
   // while other threads may have a pointer pointing to same memory location,
   // they are stuck in the CAS loop and only this thread can delete it or add
   // it to the retire list which happens after this operation.
-  std::optional<T> res{popNode ? std::move(popNode->data) : std::nullopt};
+  std::optional<T> res{popNode ? std::make_optional(std::move(popNode->data))
+                               : std::nullopt};
 
   if (popNode) {
     // Save the popped node for later if other threads are using it, otherwise

@@ -1,31 +1,35 @@
 enable_testing()
-add_executable(
-        dequeTest
-        dequeTest.cpp
-)
+include(GoogleTest)
 
-# Note: -fsanitize=thread (doesn't support std::atomic_fence)
 set(SANITIZER_FLAGS
         -fsanitize=address
         -fsanitize=undefined
 )
 
-target_compile_options(
-        dequeTest
-        PRIVATE
+# --- Chase-Lev Deque Tests
+
+add_executable(dequeTests dequeTest.cpp)
+
+# No TSan because of atomic thread fences
+target_compile_options(dequeTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-target_link_options(
-        dequeTest
-        PRIVATE
+target_link_options(dequeTests PRIVATE
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
 )
-target_link_libraries(
-        dequeTest
-        PRIVATE
-        ThreadWeave
-        GTest::gtest_main
+target_link_libraries(dequeTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(dequeTests)
+
+# --- Treiber Stack Tests
+
+add_executable(stackTests stackTest.cpp)
+target_compile_options(stackTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-include(GoogleTest)
-gtest_discover_tests(dequeTest)
+target_link_options(stackTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
+)
+target_link_libraries(stackTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(stackTests)

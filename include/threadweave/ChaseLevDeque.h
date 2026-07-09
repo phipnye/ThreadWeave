@@ -45,12 +45,12 @@ class RingBuffer {
   RingBuffer& operator=(RingBuffer&&) = delete;
 
   // Retrieve the capacity
-  [[nodiscard]] Index capacity() const noexcept {
+  Index capacity() const noexcept {
     return capacity_;
   }
 
   // Index an element in the array (with wrap around logic)
-  [[nodiscard]] std::atomic<T>& operator[](const Index idx) noexcept {
+  std::atomic<T>& operator[](const Index idx) noexcept {
     return buffer_[idx & (capacity_ - 1)];
   }
 };
@@ -112,7 +112,7 @@ class ChaseLevDeque {
    * invoked by the producer.
    * @return the element at the back of the deque or std::nullopt if empty
    */
-  [[nodiscard]] std::optional<T> pop();
+  std::optional<T> pop();
 
   /**
    * Steal an item from the front of the deque. This function is intended to be
@@ -120,20 +120,20 @@ class ChaseLevDeque {
    * @return the element at the back of the deque or std::nullopt if empty or a
    * race was lost
    */
-  [[nodiscard]] std::optional<T> steal();
+  std::optional<T> steal();
 
   /**
    * Determine if the deque is empty. This function is intended to be invoked by
    * the consumer.
    * @return true if the deque is empty and false otherwise.
    */
-  [[nodiscard]] bool empty() const noexcept;
+  bool empty() const noexcept;
 
  private:
   /**
    * Expand the underyling array to double the capacity.
    */
-  [[nodiscard]] RingBuffer* expand(Index front, Index back);
+  RingBuffer* expand(Index front, Index back);
 };
 
 template <typename T>

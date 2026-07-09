@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <threadweave/ChaseLevDeque.h>
-#include <threadweave/Constants.h>
 
 #include <algorithm>
 #include <atomic>
@@ -10,25 +9,7 @@
 #include <random>
 #include <thread>
 
-struct alignas(ThreadWeave::Internal::CacheLineSize) PaddedAtomicInt {
-  std::atomic<int> val{0};
-
-  int fetch_add(const int x, const std::memory_order order) {
-    return val.fetch_add(x, order);
-  }
-
-  int fetch_sub(const int x, const std::memory_order order) {
-    return val.fetch_sub(x, order);
-  }
-
-  int load(const std::memory_order order) const {
-    return val.load(order);
-  }
-
-  void store(const int x, const std::memory_order order) {
-    val.store(x, order);
-  }
-};
+#include "PaddedAtomicInt.h"
 
 // Randomized race condition test checking for lost or duplicate items
 TEST(DequeTest, RandomizedOperationsTest) {
@@ -125,12 +106,16 @@ TEST(DequeTest, RandomizedOperationsTest) {
 // Basic sanity check for LIFO behavior of pops
 TEST(DequeTest, OwnerPopIsLifo) {
   ThreadWeave::ChaseLevDeque<int> dq{};
-  for (int i{0}; i < 100; ++i) {
+  constexpr int n{100};
+
+  for (int i{0}; i < n; ++i) {
     dq.push(i);
   }
 
-  for (int i{99}; i > -1; --i) {
-    EXPECT_EQ(dq.pop(), i);
+  for (int i{n - 1}; i > -1; --i) {
+    const auto val{dq.pop()};
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(*val, i);
   }
 
   EXPECT_FALSE(dq.pop().has_value());
@@ -139,12 +124,16 @@ TEST(DequeTest, OwnerPopIsLifo) {
 // Basic sanity check for FIFO behavior of steals
 TEST(DequeTest, ThiefStealIsFifo) {
   ThreadWeave::ChaseLevDeque<int> dq{};
-  for (int i{0}; i < 100; ++i) {
+  constexpr int n{100};
+
+  for (int i{0}; i < n; ++i) {
     dq.push(i);
   }
 
-  for (int i{0}; i < 100; ++i) {
-    EXPECT_EQ(dq.steal(), i);
+  for (int i{0}; i < n; ++i) {
+    const auto val{dq.steal()};
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(*val, i);
   }
 }
 
@@ -152,13 +141,17 @@ TEST(DequeTest, ThiefStealIsFifo) {
 // modulo/power 2 bitmasking) behaves as expected
 TEST(DequeTest, WrapAroundBoundary) {
   ThreadWeave::ChaseLevDeque<int> dq{};
-  constexpr int iterations{100'000};
+  constexpr int n{100'000};
 
-  for (int i{0}; i < iterations; ++i) {
+  for (int i{0}; i < n; ++i) {
     dq.push(i);
     dq.push(i + 1);
-    EXPECT_EQ(dq.pop(), i + 1);
-    EXPECT_EQ(dq.steal(), i);
+    const auto popVal{dq.pop()};
+    const auto stealVal{dq.steal()};
+    EXPECT_TRUE(popVal.has_value());
+    EXPECT_TRUE(stealVal.has_value());
+    EXPECT_EQ(popVal, i + 1);
+    EXPECT_EQ(stealVal, i);
   }
 
   EXPECT_TRUE(dq.empty());
@@ -171,7 +164,7 @@ TEST(DequeTest, StealDuringExpandStress) {
   constexpr int nThieves{2};
   constexpr int nItems{500'000};
   std::atomic<bool> stop{false};
-  std::vector<std::jthread> thieves;
+  std::vector<std::jthread> thieves{};
 
   for (int i{0}; i < nThieves; ++i) {
     thieves.emplace_back([&] {

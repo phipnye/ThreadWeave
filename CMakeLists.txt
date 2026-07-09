@@ -16,7 +16,9 @@ set(COMPILER_FLAGS
         -Weffc++
         -Wconversion
         -pedantic-errors
-        #        -Werror
+        -Werror
+        -Wno-interference-size
+        -fconcepts-diagnostics-depth=2
 )
 
 # --- ThreadWeave library

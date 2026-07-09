@@ -21,7 +21,7 @@ concept HasAtomicNextPointer = requires(Node node) {
 // Concept to check if the type has a raw retireNext pointer
 template <typename Node>
 concept HasRetireNextPointer = requires(Node node) {
-  { node.retireNext } -> std::same_as<Node*>;
+  { node.retireNext } -> std::same_as<Node*&>;
 };
 
 /**

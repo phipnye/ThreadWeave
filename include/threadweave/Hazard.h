@@ -53,14 +53,14 @@ class ThreadHazardManager {
    * @param idx index of the manager's hazard pointer to retrieve
    * @return managers's `idx`th hazard pointer
    */
-  [[nodiscard]] std::atomic<void*>& getPointer(Index idx) noexcept;
+  std::atomic<void*>& getPointer(Index idx) noexcept;
 
   /**
    * Check if any threads are using node
    * @param nodePtr pointer to the node we want to check
    * @return true if nodePtr is used by any thread and false otherwise
    */
-  [[nodiscard]] static bool isPointerInUse(const void* nodePtr);
+  static bool isPointerInUse(const void* nodePtr);
 };
 
 /**

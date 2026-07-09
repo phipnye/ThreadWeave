@@ -25,7 +25,7 @@ class Queue {
   using Node = Internal::QueueNode<std::optional<T>>;
   alignas(Internal::CacheLineSize) std::atomic<Node*> head_;
   alignas(Internal::CacheLineSize) std::atomic<Node*> tail_;
-  alignas(Internal::CacheLineSize) Internal::RetireList<Node*> toBeDeleted_{};
+  alignas(Internal::CacheLineSize) Internal::RetireList<Node> toBeDeleted_{};
 
  public:
   // --- Ctor, dtor, and assignment operators
@@ -66,7 +66,7 @@ class Queue {
    * Check if the queue is empty.
    * @return true if the queue is empty and false otherwise
    */
-  [[nodiscard]] bool empty() const;
+  bool empty() const;
 };
 
 template <typename T>
