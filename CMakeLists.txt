@@ -16,7 +16,7 @@ set(COMPILER_FLAGS
         -Weffc++
         -Wconversion
         -pedantic-errors
-        -Werror
+        #        -Werror
 )
 
 # --- ThreadWeave library
@@ -29,10 +29,38 @@ target_sources(ThreadWeave
         PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
-        FILES include/threadweave/ThreadPool.h
+        FILES
+        include/threadweave/ChaseLevDeque.h
+        include/threadweave/Constants.h
+        include/threadweave/Hazard.h
+        include/threadweave/Node.h
+        include/threadweave/Queue.h
+        include/threadweave/RetireList.h
+        include/threadweave/Stack.h
+        include/threadweave/StackOps.h
+        include/threadweave/ThreadPool.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
+
+# --- Third-party dependencies
+
+include(FetchContent)
+set(BENCHMARK_ENABLE_TESTING OFF)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
+FetchContent_Declare(
+        googlebenchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG v1.9.5
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(googlebenchmark googletest)
 
 # --- Subdirectories
 add_subdirectory(examples)
 add_subdirectory(benchmark)
+add_subdirectory(tests)

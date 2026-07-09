@@ -38,7 +38,7 @@ int main() {
   }
 
   // Setup thread pool and futures
-  ThreadWeave::Pool pool{};
+  ThreadWeave::ThreadPool pool{};
   std::vector<std::future<int>> futures{};
   futures.reserve(nTasks);
 
