@@ -1,13 +1,13 @@
 #ifndef TW_UTILS_H
 #define TW_UTILS_H
 
-#include <cstddef>
+#include <cstdint>
 #include <new>
 
 namespace ThreadWeave {
 
 // Indexing integeral type
-using Index = std::ptrdiff_t;
+using Index = std::int64_t;
 
 namespace Internal {
 // Alignment to prevent false sharing

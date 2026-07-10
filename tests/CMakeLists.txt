@@ -8,7 +8,7 @@ set(SANITIZER_FLAGS
 
 # --- Chase-Lev Deque Tests
 
-add_executable(dequeTests dequeTest.cpp)
+add_executable(dequeTests DequeTest.cpp)
 
 # No TSan because of atomic thread fences
 target_compile_options(dequeTests PRIVATE
@@ -23,7 +23,7 @@ gtest_discover_tests(dequeTests)
 
 # --- Treiber Stack Tests
 
-add_executable(stackTests stackTest.cpp)
+add_executable(stackTests StackTest.cpp)
 target_compile_options(stackTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
@@ -33,3 +33,16 @@ target_link_options(stackTests PRIVATE
 )
 target_link_libraries(stackTests PRIVATE ThreadWeave GTest::gtest_main)
 gtest_discover_tests(stackTests)
+
+# ---- Michael Scott Queue Tests
+
+add_executable(queueTests QueueTest.cpp)
+target_compile_options(queueTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_options(queueTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_libraries(queueTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(queueTests)
