@@ -4,7 +4,7 @@
 #include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
-#include <threadweave/RetireList.h>
+#include <threadweave/NodeAllocator.h>
 
 #include <atomic>
 #include <optional>
@@ -23,9 +23,9 @@ template <typename T>
 class Queue {
   // --- Data members
   using Node = Internal::QueueNode<std::optional<T>>;
-  alignas(Internal::CacheLineSize) std::atomic<Node*> head_;
-  alignas(Internal::CacheLineSize) std::atomic<Node*> tail_;
-  alignas(Internal::CacheLineSize) Internal::RetireList<Node> toBeDeleted_{};
+  using Allocator = Internal::NodeAllocator<Node>;
+  alignas(Internal::CacheLineSize) std::atomic<Node*> head_{nullptr};
+  alignas(Internal::CacheLineSize) std::atomic<Node*> tail_{nullptr};
 
  public:
   // --- Ctor, dtor, and assignment operators
@@ -33,16 +33,12 @@ class Queue {
   /**
    * Default construct a Michael-Scott queue
    */
-  Queue()
-      : head_{new Node{.data = std::nullopt,
-                       .next = nullptr,
-                       .retireNext = nullptr}},  // dummy
-        tail_{head_.load(std::memory_order::relaxed)} {}
+  Queue();
 
   /**
    * Free memory associated with the underlying linked list
    */
-  ~Queue();
+  ~Queue() noexcept;
 
   // Prevent copy and move operations
   Queue(const Queue&) = delete;
@@ -74,9 +70,34 @@ class Queue {
 template <typename T>
   requires(std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-Queue<T>::~Queue() {
-  // Note that toBeDeleted_ cleans up after itself
-  Internal::deleteNodes(head_.load(std::memory_order::relaxed));
+Queue<T>::Queue() {
+  // Acquire a raw node block for the initial dummy node
+  Node* dummy{Allocator::allocate()};
+
+  // Explicitly initialize the dummy's data members
+  ::new (static_cast<void*>(&dummy->data)) std::optional<T>{std::nullopt};
+  ::new (static_cast<void*>(&dummy->next)) std::atomic<Node*>{nullptr};
+
+  // Point both head and tail to the dummy
+  head_.store(dummy, std::memory_order::relaxed);
+  tail_.store(dummy, std::memory_order::relaxed);
+}
+
+template <typename T>
+  requires(std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
+Queue<T>::~Queue() noexcept {
+  Node* head{head_.load(std::memory_order::relaxed)};
+
+  while (head) {
+    Node* curr{head};
+    head = head->next.load(std::memory_order::relaxed);
+
+    // Explicitly destroy the node's data before returning that node back to the
+    // allocator
+    curr->data.~optional<T>();
+    Allocator::deallocate(curr);
+  }
 }
 
 template <typename T>
@@ -84,8 +105,9 @@ template <typename T>
            std::is_nothrow_move_assignable_v<T>)
 void Queue<T>::push(T data) {
   // Construct new node to store data
-  Node* pushNode{new Node{
-      .data = std::move(data), .next = nullptr, .retireNext = nullptr}};
+  Node* pushNode{Allocator::allocate()};
+  ::new (static_cast<void*>(&pushNode->data)) std::optional<T>{std::move(data)};
+  ::new (static_cast<void*>(&pushNode->next)) std::atomic<Node*>(nullptr);
 
   while (true) {
     // Use an RAII guard for clearing hazard pointer when held tail pointer is
@@ -170,16 +192,15 @@ std::optional<T> Queue<T>::pop() {
     }
   }
 
-  // Save the removed node for later if other threads are using it, otherwise
-  // delete it immediately
-  if (Internal::anyThreadsUsingNode(oldDummy)) {
-    toBeDeleted_.saveForLater(oldDummy);
-  } else {
-    delete oldDummy;
+  if (oldDummy) {
+    // Explicitly destroy anything remaining of the old dummy's data
+    oldDummy->data.~optional<T>();
+
+    // Return the node back to the allocator to check hazard pointers and
+    // recycle
+    Allocator::deallocate(oldDummy);
   }
 
-  // Try deleting any nodes we previously saved for later
-  toBeDeleted_.deleteNodesChecked();
   return res;
 }
 

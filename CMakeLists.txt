@@ -37,9 +37,8 @@ target_sources(ThreadWeave
         include/threadweave/Hazard.h
         include/threadweave/Node.h
         include/threadweave/Queue.h
-        include/threadweave/RetireList.h
+        include/threadweave/NodeAllocator.h
         include/threadweave/Stack.h
-        include/threadweave/StackOps.h
         include/threadweave/ThreadPool.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})

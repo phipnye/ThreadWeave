@@ -15,48 +15,6 @@
 
 namespace ThreadWeave {
 
-namespace Internal {
-
-/**
- * A helper array class for our work-stealing deque.
- * @tparam T A generic type for storing in the array.
- */
-template <typename T>
-class RingBuffer {
-  static constexpr Index defaultCapacity{16};
-  std::unique_ptr<std::atomic<T>[]> buffer_;
-  const Index capacity_;  // capacity is read-only and safe from data races
-
- public:
-  // Ctor (capacity must be a power of 2 for correct bitmask logic)
-  explicit RingBuffer(const Index capacity = defaultCapacity)
-      : buffer_{std::make_unique<std::atomic<T>[]>(capacity)},
-        capacity_{capacity} {
-    assert(!(capacity & (capacity - 1)) && "capacity must be a power of 2.");
-  }
-
-  // Dtor
-  ~RingBuffer() = default;
-
-  // Copies and moves shouldn't be necessary
-  RingBuffer(const RingBuffer&) = delete;
-  RingBuffer(RingBuffer&&) = delete;
-  RingBuffer& operator=(const RingBuffer&) = delete;
-  RingBuffer& operator=(RingBuffer&&) = delete;
-
-  // Retrieve the capacity
-  Index capacity() const noexcept {
-    return capacity_;
-  }
-
-  // Index an element in the array (with wrap around logic)
-  std::atomic<T>& operator[](const Index idx) noexcept {
-    return buffer_[idx & (capacity_ - 1)];
-  }
-};
-
-}  // namespace Internal
-
 /**
  * An implementation of the Chase Lev work-stealing deque as described in
  * "Correct and Efﬁcient Work-Stealing for Weak Memory Models." This deque
@@ -68,8 +26,33 @@ template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
 class ChaseLevDeque {
+  // --- A helper array class for our work-stealing deque.
+  class RingBuffer {
+    static constexpr Index defaultCapacity{16};
+    std::unique_ptr<std::atomic<T>[]> buffer_;
+    const Index capacity_;  // capacity is read-only and safe from data races
+
+   public:
+    // Ctor (capacity must be a power of 2 for correct bitmask logic)
+    explicit RingBuffer(Index capacity = defaultCapacity);
+
+    // Dtor
+    ~RingBuffer() = default;
+
+    // Copies and moves shouldn't be necessary
+    RingBuffer(const RingBuffer&) = delete;
+    RingBuffer(RingBuffer&&) = delete;
+    RingBuffer& operator=(const RingBuffer&) = delete;
+    RingBuffer& operator=(RingBuffer&&) = delete;
+
+    // Retrieve the capacity
+    Index capacity() const noexcept;
+
+    // Index an element in the array (with wrap around logic)
+    std::atomic<T>& operator[](Index idx) noexcept;
+  };
+
   // --- Data members
-  using RingBuffer = Internal::RingBuffer<T>;
   alignas(Internal::CacheLineSize) std::atomic<RingBuffer*> data_;
   alignas(Internal::CacheLineSize) std::atomic<Index> front_{0};
   alignas(Internal::CacheLineSize) std::atomic<Index> back_{0};
@@ -112,7 +95,7 @@ class ChaseLevDeque {
    * invoked by the producer.
    * @return the element at the back of the deque or std::nullopt if empty
    */
-  std::optional<T> pop();
+  std::optional<T> pop() noexcept;
 
   /**
    * Steal an item from the front of the deque. This function is intended to be
@@ -120,7 +103,7 @@ class ChaseLevDeque {
    * @return the element at the back of the deque or std::nullopt if empty or a
    * race was lost
    */
-  std::optional<T> steal();
+  std::optional<T> steal() noexcept;
 
   /**
    * Determine if the deque is empty. This function is intended to be invoked by
@@ -135,6 +118,30 @@ class ChaseLevDeque {
    */
   RingBuffer* expand(Index front, Index back);
 };
+
+template <typename T>
+  requires(std::is_default_constructible_v<T> &&
+           std::is_trivially_copyable_v<T>)
+ChaseLevDeque<T>::RingBuffer::RingBuffer(const Index capacity)
+    : buffer_{std::make_unique<std::atomic<T>[]>(capacity)},
+      capacity_{capacity} {
+  assert(!(capacity & (capacity - 1)) && "capacity must be a power of 2.");
+}
+
+template <typename T>
+  requires(std::is_default_constructible_v<T> &&
+           std::is_trivially_copyable_v<T>)
+Index ChaseLevDeque<T>::RingBuffer::capacity() const noexcept {
+  return capacity_;
+}
+
+template <typename T>
+  requires(std::is_default_constructible_v<T> &&
+           std::is_trivially_copyable_v<T>)
+std::atomic<T>& ChaseLevDeque<T>::RingBuffer::operator[](
+    const Index idx) noexcept {
+  return buffer_[idx & (capacity_ - 1)];
+}
 
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
@@ -202,7 +209,7 @@ void ChaseLevDeque<T>::push(T item) {
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
-std::optional<T> ChaseLevDeque<T>::pop() {
+std::optional<T> ChaseLevDeque<T>::pop() noexcept {
   RingBuffer& data{*data_.load(std::memory_order::relaxed)};
   const Index back{back_.fetch_sub(1, std::memory_order::relaxed) - 1};
 
@@ -246,7 +253,7 @@ std::optional<T> ChaseLevDeque<T>::pop() {
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
-std::optional<T> ChaseLevDeque<T>::steal() {
+std::optional<T> ChaseLevDeque<T>::steal() noexcept {
   // Note the use of an atomic fence is the reverse ordering of that used in
   // pop()
   // In pop(): store(back) -> seq_cst fence -> load(front)

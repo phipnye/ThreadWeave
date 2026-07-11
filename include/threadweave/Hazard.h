@@ -44,7 +44,7 @@ class ThreadHazardManager {
   /**
    * Free this manager's resources in our pool so other threads can use it
    */
-  ~ThreadHazardManager();
+  ~ThreadHazardManager() noexcept;
 
   // --- Member functions
 
@@ -60,7 +60,7 @@ class ThreadHazardManager {
    * @param nodePtr pointer to the node we want to check
    * @return true if nodePtr is used by any thread and false otherwise
    */
-  static bool isPointerInUse(const void* nodePtr);
+  static bool isPointerInUse(const void* nodePtr) noexcept;
 };
 
 /**
@@ -75,7 +75,7 @@ std::atomic<void*>& getThreadHazardPointer(Index idx);
  * @param nodePtr pointer to the node we want to check
  * @return true if nodePtr is used by any thread and false otherwise
  */
-bool anyThreadsUsingNode(const void* nodePtr);
+bool anyThreadsUsingNode(const void* nodePtr) noexcept;
 
 /**
  * RAII guard for acquiring a pointer with hazard indicating use and a
@@ -136,10 +136,17 @@ T* HazardGuard<idx>::acquirePointerWithHazard(
   T* node{atomic.load(std::memory_order::relaxed)};
   T* tmp{nullptr};
 
+  // TO DO: This code technically has UB, if a thread frees the memory tmp
+  // points to and then when compare node != tmp, using tmp is UB per the
+  // standard's "pointer zapping" rule
   do {
+    // It's important the following operations occur in order and thus
+    // sequential consistency is applied to make sure the store-load occurs in
+    // program order globally
+    // https://stackoverflow.com/questions/67693687/possible-orderings-with-memory-order-seq-cst-and-memory-order-release
     tmp = node;
     hp.store(tmp, std::memory_order::seq_cst);
-    node = atomic.load(std::memory_order::acquire);
+    node = atomic.load(std::memory_order::seq_cst);
   } while (node != tmp);
 
   return node;
