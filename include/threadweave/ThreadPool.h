@@ -1,6 +1,8 @@
 #ifndef TW_POOL_H
 #define TW_POOL_H
 
+#include <threadweave/Constants.h>
+
 #include <condition_variable>
 #include <functional>
 #include <future>
@@ -18,7 +20,7 @@ class ThreadPool {
   using Task = std::move_only_function<void()>;
 
   // --- Data members
-  std::vector<std::thread> workers_{};
+  std::vector<std::jthread> workers_{};
   std::queue<Task> tasks_{};
   std::mutex mutex_{};
   std::condition_variable cv_{};
@@ -28,7 +30,7 @@ class ThreadPool {
   // --- Ctors, Assignment, and Dtor
 
   // Ctor with user-defined number of threads
-  explicit ThreadPool(unsigned nThreads = std::thread::hardware_concurrency());
+  explicit ThreadPool(Index nThreads = std::thread::hardware_concurrency());
 
   // Remove copy and move ops
   ThreadPool(const ThreadPool&) = delete;
@@ -41,15 +43,13 @@ class ThreadPool {
 
   // --- Member functions
 
-  // Place tasks into the queue so the next available thread can take on the
-  // given task
   template <typename F, typename... Args>
-  auto emplace(F&& f, Args&&... args)
+  auto submit(F&& f, Args&&... args)
       -> std::future<std::invoke_result_t<F, Args...>>;
 };
 
 template <typename F, typename... Args>
-auto ThreadPool::emplace(F&& f, Args&&... args)
+auto ThreadPool::submit(F&& f, Args&&... args)
     -> std::future<std::invoke_result_t<F, Args...>> {
   // Capture task and future storing result of task
   using ReturnType = std::invoke_result_t<F, Args...>;

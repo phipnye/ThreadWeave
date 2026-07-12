@@ -44,7 +44,7 @@ int main() {
 
   // Submit tasks to the thread pool
   for (std::size_t i{0}; i < nTasks; ++i) {
-    futures.emplace_back(pool.emplace(naiveFib, randSample[i]));
+    futures.emplace_back(pool.submit(naiveFib, randSample[i]));
   }
 
   // Capture and demonstrate results

@@ -46,3 +46,16 @@ target_link_options(queueTests PRIVATE
 )
 target_link_libraries(queueTests PRIVATE ThreadWeave GTest::gtest_main)
 gtest_discover_tests(queueTests)
+
+# ---- Thread Pool Tests
+
+add_executable(threadPoolTests ThreadPoolTest.cpp)
+target_compile_options(threadPoolTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_options(threadPoolTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_libraries(threadPoolTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(threadPoolTests)

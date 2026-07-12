@@ -136,9 +136,8 @@ T* HazardGuard<idx>::acquirePointerWithHazard(
   T* node{atomic.load(std::memory_order::relaxed)};
   T* tmp{nullptr};
 
-  // TO DO: This code technically has UB, if a thread frees the memory tmp
-  // points to and then when compare node != tmp, using tmp is UB per the
-  // standard's "pointer zapping" rule
+  // Memory allocator does not free heap memory until the end of the program,
+  // thus our logic here is sound from the "pointer zapping" UB issue
   do {
     // It's important the following operations occur in order and thus
     // sequential consistency is applied to make sure the store-load occurs in

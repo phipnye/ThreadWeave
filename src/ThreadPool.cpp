@@ -1,3 +1,4 @@
+#include <threadweave/Constants.h>
 #include <threadweave/ThreadPool.h>
 
 #include <algorithm>
@@ -12,9 +13,9 @@
 namespace ThreadWeave {
 
 // Ctor
-ThreadPool::ThreadPool(unsigned nThreads) {
+ThreadPool::ThreadPool(Index nThreads) {
   // Make sure at least one thread
-  nThreads = std::max(nThreads, 1u);
+  nThreads = std::max(nThreads, static_cast<Index>(1));
   workers_.reserve(nThreads);
 
   // Fill pool with worker threads
@@ -54,11 +55,6 @@ ThreadPool::~ThreadPool() {
   }
 
   cv_.notify_all();
-
-  // Join threads
-  for (auto& t : workers_) {
-    t.join();
-  }
 }
 
 }  // namespace ThreadWeave
