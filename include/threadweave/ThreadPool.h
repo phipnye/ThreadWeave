@@ -1,13 +1,12 @@
 #ifndef TW_POOL_H
 #define TW_POOL_H
 
+#include <threadweave/ChaseLevDeque.h>
 #include <threadweave/Constants.h>
 
-#include <condition_variable>
 #include <functional>
 #include <future>
-#include <mutex>
-#include <queue>
+#include <memory>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -15,16 +14,27 @@
 
 namespace ThreadWeave {
 
-class ThreadPool {
-  // Type aliases
-  using Task = std::move_only_function<void()>;
+namespace Internal {
 
+// A simple wrapper around a function pointer
+struct Task {
+  void (*fun)(){nullptr};
+
+  void operator()() const {
+    fun();  // assumes non-null
+  }
+};
+
+}  // namespace Internal
+
+class ThreadPool {
   // --- Data members
-  std::vector<std::jthread> workers_{};
-  std::queue<Task> tasks_{};
-  std::mutex mutex_{};
-  std::condition_variable cv_{};
-  bool stop_{false};
+  using Task = Internal::Task;
+  std::unique_ptr<ChaseLevDeque<Task>[]> queues_;
+  std::vector<std::jthread> workers_;
+  std::atomic<Index> runningId_;
+  const Index nThreads_;
+  std::atomic<bool> stop_;
 
  public:
   // --- Ctors, Assignment, and Dtor
@@ -53,18 +63,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     -> std::future<std::invoke_result_t<F, Args...>> {
   // Capture task and future storing result of task
   using ReturnType = std::invoke_result_t<F, Args...>;
-  std::packaged_task<ReturnType()> task{
-      std::bind(std::forward<F>(f), std::forward<Args>(args)...)};
-  std::future<ReturnType> taskFuture{task.get_future()};
 
-  // Push task onto tasks queue and notify an available thread of the task
-  {
-    std::lock_guard lock{mutex_};
-    tasks_.emplace([task = std::move(task)]() mutable { task(); });
-  }
-
-  cv_.notify_one();
-  return taskFuture;
 }
 
 }  // namespace ThreadWeave

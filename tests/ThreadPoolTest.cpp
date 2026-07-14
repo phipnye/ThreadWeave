@@ -211,8 +211,8 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
   // Must have a sufficient number of threads to perform tasks recursively
   ThreadPool pool{8};
 
-  // A recursive function that mimics a parallel quicksort/merge split
-  auto parallelSum{[&pool](this auto self, int n) {
+  // Parallel version of naive fibonacci
+  auto parallelFib{[&pool](this auto self, int n) {
     if (n <= 1) {
       return pool.submit([] { return 1; });
     }
@@ -225,8 +225,8 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
     });
   }};
 
-  auto result{parallelSum(5)};
-  EXPECT_EQ(result.get(), 8);  // Fibonacci(5) = 8
+  auto result{parallelFib(5)};
+  EXPECT_EQ(result.get(), 8);  // fib(5) = 8
 }
 
 // Make sure idle threads steal tasks from working threads

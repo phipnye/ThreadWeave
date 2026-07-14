@@ -13,7 +13,7 @@ namespace ThreadWeave::Internal {
  * @tparam Node a linked list node type
  */
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 class NodeAllocator {
   // --- Enum supporting whether to operate on free list or to save for later
   // but don't reuse yet
@@ -118,7 +118,7 @@ class NodeAllocator {
 };
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 void NodeAllocator<Node>::tryRecycle(Node* saved, Node*& holdFree,
                                      Node*& holdSave) noexcept {
   while (saved) {
@@ -136,7 +136,7 @@ void NodeAllocator<Node>::tryRecycle(Node* saved, Node*& holdFree,
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 Node* NodeAllocator<Node>::GlobalNodeCaches::allocateBlock() {
   // Allocate a full block of nodes (we do this to minimize the number of
   // times malloc has to be called
@@ -173,7 +173,7 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::allocateBlock() {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 NodeAllocator<Node>::GlobalNodeCaches::GlobalNodeCaches() {
   // Preallocate a block of the set number of nodes
   Node* initialNode{allocateBlock()};
@@ -184,7 +184,7 @@ NodeAllocator<Node>::GlobalNodeCaches::GlobalNodeCaches() {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 NodeAllocator<Node>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
   // Keep track of the nodes that are block starts so we can free memory
   // safely
@@ -218,7 +218,7 @@ NodeAllocator<Node>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 Node* NodeAllocator<Node>::GlobalNodeCaches::askForNode() {
   // First try taking from free list
   Node* node{freeHead_.load(std::memory_order::acquire)};
@@ -263,14 +263,14 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::askForNode() {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 NodeAllocator<Node>::GlobalNodeCaches& NodeAllocator<Node>::getGlobalCaches() {
   static GlobalNodeCaches global{};
   return global;
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 NodeAllocator<Node>::ThreadNodeCache::~ThreadNodeCache() {
   pushBatchToGlobal<StoreLocation::free>(freeHead_);
   Node* holdFree{nullptr};  // nodes that are now free
@@ -281,14 +281,14 @@ NodeAllocator<Node>::ThreadNodeCache::~ThreadNodeCache() {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 NodeAllocator<Node>::ThreadNodeCache& NodeAllocator<Node>::getThreadCaches() {
   thread_local ThreadNodeCache cache{};
   return cache;
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 template <typename NodeAllocator<Node>::StoreLocation op>
 void NodeAllocator<Node>::pushBatchToGlobal(Node* batchHead) {
   if (!batchHead) {
@@ -315,7 +315,7 @@ void NodeAllocator<Node>::pushBatchToGlobal(Node* batchHead) {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 Node* NodeAllocator<Node>::allocate() {
   ThreadNodeCache& local{getThreadCaches()};
 
@@ -341,7 +341,7 @@ Node* NodeAllocator<Node>::allocate() {
 }
 
 template <typename Node>
-  requires(HasInternalNextPointer<Node> && HasBlockStartField<Node>)
+  requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 void NodeAllocator<Node>::deallocate(Node* node) noexcept {
   if (!node) {
     return;

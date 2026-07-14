@@ -70,3 +70,6 @@ Testing/
 
 # IDE files
 .idea/
+
+# Archived files
+*/~archive/

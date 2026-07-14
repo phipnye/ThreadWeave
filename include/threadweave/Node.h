@@ -28,7 +28,7 @@ concept HasInternalNextPointer = requires(Node node) {
 // Concept to check if the type has a boolean member isBlockStart indicating
 // whether the node is the head of an allocation block
 template <typename Node>
-concept HasBlockStartField = requires(Node node) {
+concept HasInternalBlockStartField = requires(Node node) {
   { node._internal.isBlockStart } -> std::same_as<bool&>;
 };
 
