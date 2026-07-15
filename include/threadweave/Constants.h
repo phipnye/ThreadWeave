@@ -1,5 +1,5 @@
-#ifndef TW_UTILS_H
-#define TW_UTILS_H
+#ifndef TW_CONSTANTS_H
+#define TW_CONSTANTS_H
 
 #include <cstdint>
 #include <new>

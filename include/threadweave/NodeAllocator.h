@@ -1,5 +1,5 @@
-#ifndef TW_RETIRE_LIST_H
-#define TW_RETIRE_LIST_H
+#ifndef TW_NODE_ALLOCATOR_H
+#define TW_NODE_ALLOCATOR_H
 
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
@@ -9,10 +9,12 @@
 namespace ThreadWeave::Internal {
 
 /**
- * Class for retrieving and recycling nodes for a linked ...
+ * Class for retrieving and recycling nodes for a linked list implementation
  * @tparam Node a linked list node type
+ * @tparam NodesPerBlock number of nodes to allocate a time (larger values
+ * result in fewer heap allocations but could be more wasteful of memory)
  */
-template <typename Node>
+template <typename Node, Index NodesPerBlock = 256>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
 class NodeAllocator {
   // --- Enum supporting whether to operate on free list or to save for later
@@ -26,9 +28,6 @@ class NodeAllocator {
 
   // --- Global cache of nodes to share across threads
   class GlobalNodeCaches {
-    // Number of nodes to allocate for at a time
-    static constexpr Index NodesPerBlock{256};
-
     // Private helper to allocate a contiguous block of nodes and push to free
     // list
     Node* allocateBlock();
@@ -117,10 +116,11 @@ class NodeAllocator {
   static void deallocate(Node* node) noexcept;
 };
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-void NodeAllocator<Node>::tryRecycle(Node* saved, Node*& holdFree,
-                                     Node*& holdSave) noexcept {
+void NodeAllocator<Node, NodesPerBlock>::tryRecycle(Node* saved,
+                                                    Node*& holdFree,
+                                                    Node*& holdSave) noexcept {
   while (saved) {
     Node* curr{saved};
     saved = saved->_internal.next;
@@ -135,9 +135,9 @@ void NodeAllocator<Node>::tryRecycle(Node* saved, Node*& holdFree,
   }
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-Node* NodeAllocator<Node>::GlobalNodeCaches::allocateBlock() {
+Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
   // Allocate a full block of nodes (we do this to minimize the number of
   // times malloc has to be called
   Node* block{static_cast<Node*>(::operator new(sizeof(Node) * NodesPerBlock))};
@@ -146,6 +146,7 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::allocateBlock() {
   // nodes to free in the destructor
   block[0]._internal.isBlockStart = true;
   block[0]._internal.next = nullptr;  // isolate the node we are stealing
+  block[1]._internal.isBlockStart = false;
 
   // Chain the remaining nodes together and ensure their flags are false
   for (Index i{1}; i + 1 < NodesPerBlock; ++i) {
@@ -172,9 +173,9 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::allocateBlock() {
   return &block[0];
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-NodeAllocator<Node>::GlobalNodeCaches::GlobalNodeCaches() {
+NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches() {
   // Preallocate a block of the set number of nodes
   Node* initialNode{allocateBlock()};
 
@@ -183,9 +184,10 @@ NodeAllocator<Node>::GlobalNodeCaches::GlobalNodeCaches() {
   freeHead_.store(initialNode, std::memory_order_relaxed);
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-NodeAllocator<Node>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
+NodeAllocator<Node,
+              NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
   // Keep track of the nodes that are block starts so we can free memory
   // safely
   Node* blockStarts{nullptr};
@@ -217,9 +219,9 @@ NodeAllocator<Node>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
   }
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-Node* NodeAllocator<Node>::GlobalNodeCaches::askForNode() {
+Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
   // First try taking from free list
   Node* node{freeHead_.load(std::memory_order::acquire)};
 
@@ -235,8 +237,7 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::askForNode() {
 
   // Try recycling nodes from the save list
   // clang-format off
-      if (Node* saved{
-                  saveHead_.exchange(nullptr, std::memory_order::acquire)}) {
+  if (Node* saved{saveHead_.exchange(nullptr, std::memory_order::acquire)}) {
     // clang-format on
     Node* holdFree{nullptr};  // Nodes that can be moved to free list
     Node* holdSave{nullptr};  // Nodes that remain in 'saved' state
@@ -262,16 +263,17 @@ Node* NodeAllocator<Node>::GlobalNodeCaches::askForNode() {
   return allocateBlock();
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-NodeAllocator<Node>::GlobalNodeCaches& NodeAllocator<Node>::getGlobalCaches() {
+NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches&
+NodeAllocator<Node, NodesPerBlock>::getGlobalCaches() {
   static GlobalNodeCaches global{};
   return global;
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-NodeAllocator<Node>::ThreadNodeCache::~ThreadNodeCache() {
+NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::~ThreadNodeCache() {
   pushBatchToGlobal<StoreLocation::free>(freeHead_);
   Node* holdFree{nullptr};  // nodes that are now free
   Node* holdSave{nullptr};  // nodes that need to remain saved for later
@@ -280,17 +282,18 @@ NodeAllocator<Node>::ThreadNodeCache::~ThreadNodeCache() {
   pushBatchToGlobal<StoreLocation::save>(holdSave);
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-NodeAllocator<Node>::ThreadNodeCache& NodeAllocator<Node>::getThreadCaches() {
+NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache&
+NodeAllocator<Node, NodesPerBlock>::getThreadCaches() {
   thread_local ThreadNodeCache cache{};
   return cache;
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-template <typename NodeAllocator<Node>::StoreLocation op>
-void NodeAllocator<Node>::pushBatchToGlobal(Node* batchHead) {
+template <typename NodeAllocator<Node, NodesPerBlock>::StoreLocation op>
+void NodeAllocator<Node, NodesPerBlock>::pushBatchToGlobal(Node* batchHead) {
   if (!batchHead) {
     return;
   }
@@ -309,14 +312,14 @@ void NodeAllocator<Node>::pushBatchToGlobal(Node* batchHead) {
 
   // CAS loop until batch is successfully pushed
   batchTail->_internal.next = cacheHead.load(std::memory_order::relaxed);
-  while (!cacheHead.compare_exchange_weak(batchTail->_internal.next, batchTail,
+  while (!cacheHead.compare_exchange_weak(batchTail->_internal.next, batchHead,
                                           std::memory_order::release,
                                           std::memory_order::relaxed));
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-Node* NodeAllocator<Node>::allocate() {
+Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
   ThreadNodeCache& local{getThreadCaches()};
 
   // Try recycling local nodes if necessary
@@ -340,9 +343,9 @@ Node* NodeAllocator<Node>::allocate() {
   return getGlobalCaches().askForNode();
 }
 
-template <typename Node>
+template <typename Node, Index NodesPerBlock>
   requires(HasInternalNextPointer<Node> && HasInternalBlockStartField<Node>)
-void NodeAllocator<Node>::deallocate(Node* node) noexcept {
+void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* node) noexcept {
   if (!node) {
     return;
   }

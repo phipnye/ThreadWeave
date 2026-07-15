@@ -3,6 +3,9 @@
 
 #include <atomic>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
 
 namespace ThreadWeave::Internal {
 
@@ -33,6 +36,18 @@ concept HasInternalBlockStartField = requires(Node node) {
 };
 
 /**
+ * A helper aggreagate to manage "internal" data that our allocator can use to
+ * resolve memory managment tasks without manipulating the node's "actual" next
+ * member causing potential data races
+ * @tparam Node a node type to link
+ */
+template <typename Node>
+struct InternalNode {
+  Node* next;
+  bool isBlockStart;
+};
+
+/**
  * Simple aggregate for nodes of a singly linked list to be used as the
  * underlying implementation of a stack. The additional retire next pointer
  * allows storage in a retirement list without introducing data races.
@@ -42,11 +57,7 @@ template <typename T>
 struct StackNode {
   T data;
   StackNode* next;
-
-  struct {
-    StackNode* next;
-    bool isBlockStart;
-  } _internal;
+  InternalNode<StackNode> _internal;
 };
 
 /**
@@ -59,11 +70,7 @@ template <typename T>
 struct QueueNode {
   T data;
   std::atomic<QueueNode*> next;
-
-  struct {
-    QueueNode* next;
-    bool isBlockStart;
-  } _internal;
+  InternalNode<QueueNode> _internal;
 };
 
 }  // namespace ThreadWeave::Internal
