@@ -13,15 +13,11 @@ namespace ThreadWeave::Internal {
 /**
  * Class for retrieving and recycling nodes for a linked list implementation
  * @tparam Node a linked list node type.
- * @tparam NodesPerBlock number of nodes to allocate a time (larger values
+ * @tparam NodesPerBlock number of nodes to allocate at a time (larger values
  * result in fewer heap allocations but could be more wasteful of memory)
  */
 template <AllocatorEligibleNode Node, Index NodesPerBlock = 256>
 class NodeAllocator {
-  // --- Enum supporting whether to operate on free list or to save for later
-  // but don't reuse yet
-  enum class StoreLocation : Index { free, save, COUNT };
-
   // Take head and see which nodes we can steal from the saved list and move to
   // the free list
   static void tryRecycle(Node* saved, Node*& holdFree,
@@ -52,14 +48,45 @@ class NodeAllocator {
     // Ask global pool for a free node (falls back to a heap allocation if
     // nothing is available)
     Node* askForNode();
+
+    // Save batch of nodes for later
+    void pushSave(Node* batchHead) {
+      pushBatch(saveHead_, batchHead);
+    }
+
+    // Free batch of nodes to free list
+    void pushFree(Node* batchHead) {
+      pushBatch(freeHead_, batchHead);
+    }
+
+   private:
+    // Push a batch of nodes to the head of a global cache
+    static void pushBatch(std::atomic<Node*>& cacheHead, Node* batchHead) {
+      if (!batchHead) {
+        return;
+      }
+
+      // Retrieve tail of the batch
+      Node* batchTail{batchHead};
+
+      while (batchTail->_internal.next) {
+        batchTail = batchTail->_internal.next;
+      }
+
+      batchTail->_internal.next = cacheHead.load(MemoryOrder::relaxed);
+      while (!cacheHead.compare_exchange_weak(batchTail->_internal.next,
+                                              batchHead, MemoryOrder::release,
+                                              MemoryOrder::relaxed));
+    }
   };
 
-  // Retrieve the GlobalNodeCaches singleton
-  static GlobalNodeCaches& getGlobalCaches();
+  // Retrieve pointer to the GlobalNodeCaches singleton
+  static std::shared_ptr<GlobalNodeCaches> getGlobalCaches();
 
   // --- Thread-local cache of nodes
   class ThreadNodeCache {
    public:
+    std::shared_ptr<GlobalNodeCaches> globalCache_{getGlobalCaches()};
     Node* freeHead_{nullptr};  // free nodes
     Node* saveHead_{nullptr};  // nodes that can't be reused yet
 
@@ -73,13 +100,14 @@ class NodeAllocator {
     ThreadNodeCache(ThreadNodeCache&&) = delete;
     ThreadNodeCache& operator=(const ThreadNodeCache&) = delete;
     ThreadNodeCache& operator=(ThreadNodeCache&&) = delete;
+
+    // Ask global cache for a free node
+    Node* askGlobalForNode() {
+      return globalCache_->askForNode();
+    }
   };
 
   static ThreadNodeCache& getThreadCaches();
-
-  // Helper to push a batch from thread local caches to global pool
-  template <StoreLocation op>
-  static void pushBatchToGlobal(Node* batchHead);
 
  public:
   // --- Ctors, dtor, and assignment operators
@@ -178,8 +206,11 @@ NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches() {
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node,
               NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
-  // TODO: We implicitly assume thread_local data gets destroyed first and then
-  // pushed here. If not, we would have destruction issues and memory leaks
+  // Note, this destructor is completely safe at the time it gets called by the
+  // use of shared pointers with reference counting. So long as the a thread
+  // cache holds a reference, this destructor won't get called. This prevents
+  // free any potential use-after-free issues or cases where the thread cache
+  // destructors push to the global cache after the global's destructor
 
   // Keep track of the nodes that are block starts so we can free memory
   // safely
@@ -187,11 +218,8 @@ NodeAllocator<Node,
 
   // Gather all of the nodes that are the starts of a block across all of
   // our lists
-  for (Index i{0}; i < static_cast<Index>(StoreLocation::COUNT); ++i) {
-    StoreLocation loc{static_cast<StoreLocation>(i)};
-    Node* head{loc == StoreLocation::free
-                   ? freeHead_.load(MemoryOrder::relaxed)
-                   : saveHead_.load(MemoryOrder::relaxed)};
+  for (std::atomic<Node*>* atomicHead : {&freeHead_, &saveHead_}) {
+    Node* head{atomicHead->load(MemoryOrder::relaxed)};
 
     while (head) {
       Node* const curr{head};
@@ -260,14 +288,14 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
     tryRecycle(saved, holdFree, holdSave);
 
     // Return the still-pinned nodes back to the global save pool
-    pushBatchToGlobal<StoreLocation::save>(holdSave);
+    pushSave(holdSave);
 
     // If we uncovered safe nodes, peel one off to return, cache the rest
     if (holdFree) {
       freeNode = holdFree;
       holdFree = holdFree->_internal.next;
       freeNode->_internal.next = nullptr;
-      pushBatchToGlobal<StoreLocation::free>(holdFree);
+      pushFree(holdFree);
       return freeNode;
     }
   }
@@ -278,20 +306,20 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches&
+std::shared_ptr<typename NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches>
 NodeAllocator<Node, NodesPerBlock>::getGlobalCaches() {
-  static GlobalNodeCaches global{};
+  static auto global{std::make_shared<GlobalNodeCaches>()};
   return global;
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::~ThreadNodeCache() {
-  pushBatchToGlobal<StoreLocation::free>(freeHead_);
+  globalCache_->pushFree(freeHead_);
   Node* holdFree{nullptr};  // nodes that are now free
   Node* holdSave{nullptr};  // nodes that need to remain saved for later
   tryRecycle(saveHead_, holdFree, holdSave);
-  pushBatchToGlobal<StoreLocation::free>(holdFree);
-  pushBatchToGlobal<StoreLocation::save>(holdSave);
+  globalCache_->pushFree(holdFree);
+  globalCache_->pushSave(holdSave);
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -299,32 +327,6 @@ NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache&
 NodeAllocator<Node, NodesPerBlock>::getThreadCaches() {
   thread_local ThreadNodeCache cache{};
   return cache;
-}
-
-template <AllocatorEligibleNode Node, Index NodesPerBlock>
-template <typename NodeAllocator<Node, NodesPerBlock>::StoreLocation op>
-void NodeAllocator<Node, NodesPerBlock>::pushBatchToGlobal(Node* batchHead) {
-  if (!batchHead) {
-    return;
-  }
-
-  // Retrieve the tail of the batch
-  Node* batchTail{batchHead};
-
-  while (batchTail->_internal.next) {
-    batchTail = batchTail->_internal.next;
-  }
-
-  // Retrieve the list we want to push the batch to
-  GlobalNodeCaches& global{getGlobalCaches()};
-  std::atomic<Node*>& cacheHead{op == StoreLocation::free ? global.freeHead_
-                                                          : global.saveHead_};
-
-  // CAS loop until batch is successfully pushed
-  batchTail->_internal.next = cacheHead.load(MemoryOrder::relaxed);
-  while (!cacheHead.compare_exchange_weak(batchTail->_internal.next, batchHead,
-                                          MemoryOrder::release,
-                                          MemoryOrder::relaxed));
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -348,9 +350,9 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
     local.freeHead_ = node->_internal.next;
   } else {
     // Ask global pool for a node (if it has a free node, it will provide it, if
-    // not this will perform a heap allocation which is not lock-free however
-    // hopefully
-    node = getGlobalCaches().askForNode();
+    // not this will perform a heap allocation which is not lock-free though
+    // this fallback should occur infrequently
+    node = local.askGlobalForNode();
   }
 
   return node;
