@@ -4,7 +4,8 @@
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
-#include <threadweave/ThreadPool.h>
+#include <threadweave/enums.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <optional>
@@ -18,7 +19,9 @@ namespace ThreadWeave {
  * @tparam T type of the object to store in the stack
  */
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 class Stack {
   // --- Data members
   using Node = Internal::StackNode<T>;
@@ -67,17 +70,16 @@ class Stack {
 };
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 Stack<T>::~Stack() {
-  Node* head{head_.load(std::memory_order::relaxed)};
+  Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {
     // ReSharper disable once CppLocalVariableMayBeConst
     Node* const curr{head};
     head = head->next;
-
-    // Explicitly destroy the user's data payload
-    curr->data.~T();
 
     // Return the node memory back to the allocator pools safely
     Allocator::deallocate(curr);
@@ -85,24 +87,27 @@ Stack<T>::~Stack() {
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 void Stack<T>::push(T data) {
   // Grab raw, recycled node memory from the block allocator (may very rarely
   // perform a heap allocation which is not lock-free)
   Node* newNode{Allocator::allocate()};
 
   // Move data into the node
-  new (static_cast<void*>(&newNode->data)) T{std::move(data)};
+  newNode->data = std::move(data);
 
   // Push new node onto the stack
-  newNode->next = head_.load(std::memory_order::relaxed);
-  while (!head_.compare_exchange_weak(newNode->next, newNode,
-                                      std::memory_order::release,
-                                      std::memory_order::relaxed)) {}
+  newNode->next = head_.load(MemoryOrder::relaxed);
+  while (!head_.compare_exchange_weak(
+      newNode->next, newNode, MemoryOrder::release, MemoryOrder::relaxed)) {}
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 std::optional<T> Stack<T>::pop() {
   // Pointer to node on top of the stack
   Node* popNode{nullptr};
@@ -110,15 +115,15 @@ std::optional<T> Stack<T>::pop() {
   {
     // Use an RAII guard for clearing hazard pointer when node is no longer in
     // use
-    Internal::HazardGuard<0> headGuard{};
+    Internal::HazardGuard<Internal::HazardSlot::Stack0> headGuard{};
 
     do {
       // Acquire pointer pointing to head node with a hazard pointer indicating
       // current thread's use
       popNode = headGuard.acquirePointerWithHazard(head_);
-    } while (popNode && !head_.compare_exchange_strong(
-                            popNode, popNode->next, std::memory_order::acquire,
-                            std::memory_order::relaxed));
+    } while (popNode && !head_.compare_exchange_strong(popNode, popNode->next,
+                                                       MemoryOrder::acquire,
+                                                       MemoryOrder::relaxed));
   }
 
   // Empty stack
@@ -126,19 +131,15 @@ std::optional<T> Stack<T>::pop() {
     return std::nullopt;
   }
 
-  // Data should be no throw move constructible and std::optional requires no
-  // heap allocation so this should be safe. Note that it is safe to
-  // dereference popNode at this point. Only the current thread could've
-  // gotten out of the CAS loop with popNode unlinked from the list. Thus,
-  // while other threads may have a pointer pointing to same memory location,
-  // they are stuck in the CAS loop and only this thread can delete it or add
-  // it to the retire list which happens after this operation.
+  // Data should be no throw move constructible and std::optional requires
+  // std::is_nothrow_default_constructible_v<T> && no heap allocation so this
+  // should be safe. Note that it is safe to dereference popNode at this point.
+  // Only the current thread could've gotten out of the CAS loop with popNode
+  // unlinked from the list. Thus, while other threads may have a pointer
+  // pointing to same memory location, they are stuck in the CAS loop and only
+  // this thread can delete it or add it to the retire list which happens after
+  // this operation.
   std::optional<T> res{std::move(popNode->data)};
-
-  // Explicitly call the destructor on the remaining moved-from data state.
-  // skipping this could cause memory leaks later in the program when node
-  // memory gets recycled and overwritten
-  popNode->data.~T();
 
   // Hand the node back to the allocator. It automatically checks hazard
   // pointers and places it in either the local free list or local save list.
@@ -147,9 +148,11 @@ std::optional<T> Stack<T>::pop() {
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T> &&
+           std::is_nothrow_move_assignable_v<T>)
 bool Stack<T>::empty() const noexcept {
-  return head_.load(std::memory_order::relaxed) == nullptr;
+  return head_.load(MemoryOrder::relaxed) == nullptr;
 }
 
 }  // namespace ThreadWeave

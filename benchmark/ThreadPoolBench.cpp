@@ -1,12 +1,13 @@
 #include <benchmark/benchmark.h>
-#include <threadweave/Constants.h>
 #include <threadweave/ThreadPool.h>
+#include <threadweave/utils.h>
 
 #include <future>
 #include <numeric>
 #include <thread>
 #include <vector>
 
+using ThreadWeave::Future;
 using ThreadWeave::Index;
 using ThreadWeave::ThreadPool;
 
@@ -131,7 +132,7 @@ static double runStdAsync(const Index nTasks, const Index nIter) {
 static double runPool(const Index nThreads, const Index nTasks,
                       const Index nIter) {
   ThreadPool pool{nThreads};
-  std::vector<std::future<double>> futures{};
+  std::vector<Future<double>> futures{};
   futures.reserve(nTasks);
 
   for (Index t{0}; t < nTasks; ++t) {

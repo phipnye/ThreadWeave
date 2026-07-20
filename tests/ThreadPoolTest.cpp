@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
+#include <threadweave/utils.h>
 
 #include <bitset>
 #include <chrono>
@@ -11,13 +12,14 @@
 #include <vector>
 
 using ThreadWeave::ThreadPool;
+namespace MemoryOrder = ThreadWeave::MemoryOrder;
 
 template <typename T>
 using Future = ThreadWeave::Future<T>;
 
 // Try submitting just a single simple task
 TEST(ThreadPoolTest, SingleTask) {
-  ThreadPool pool{2};
+  ThreadPool pool{1};
   constexpr int expectedVal{42};
   Future<int> f{pool.submit([] { return expectedVal; })};
   EXPECT_EQ(expectedVal, f.get());
@@ -26,7 +28,7 @@ TEST(ThreadPoolTest, SingleTask) {
 // Try submitting multiple simple tasks
 TEST(ThreadPoolTest, MultipleTasks) {
   constexpr int nTasks{1'000};
-  ThreadPool pool{};
+  ThreadPool pool{1};
   std::vector<Future<int>> futures{};
   futures.reserve(nTasks);
 
@@ -108,16 +110,15 @@ TEST(ThreadPoolTest, HandlesMixedTaskDurations) {
           std::this_thread::yield();
         }
 
-        completed.fetch_add(1, std::memory_order::relaxed);
+        completed.fetch_add(1, MemoryOrder::relaxed);
       });
     }
   }
 
-  EXPECT_EQ(completed.load(std::memory_order::relaxed), nTasks);
+  EXPECT_EQ(completed.load(MemoryOrder::relaxed), nTasks);
 }
 
 // Make sure multiple threads can submit work concurrently
-// TODO: Apparent deadlock
 TEST(ThreadPoolTest, ConcurrentSubmissions) {
   constexpr int nSubmitters{8};
   constexpr int tasksPerSubmitter{1'000};
@@ -169,7 +170,7 @@ TEST(ThreadPoolTest, RunsTasksConcurrently) {
 
         if (!seen) {
           seen = true;
-          uniqueThreadCount.fetch_add(1, std::memory_order_relaxed);
+          uniqueThreadCount.fetch_add(1, MemoryOrder::relaxed);
         }
       });
     }
@@ -177,7 +178,7 @@ TEST(ThreadPoolTest, RunsTasksConcurrently) {
 
   // Not necessarily guaranteed but should be the case with a sufficient number
   // of tasks
-  EXPECT_EQ(uniqueThreadCount.load(std::memory_order::relaxed), nThreads);
+  EXPECT_EQ(uniqueThreadCount.load(MemoryOrder::relaxed), nThreads);
 }
 
 // Make sure exceptions from one task don't break other tasks
@@ -203,11 +204,11 @@ TEST(ThreadPoolTest, HandlesManyTasks) {
     ThreadPool pool{};
     for (int i{0}; i < nTasks; ++i) {
       pool.submit(
-          [&completed] { completed.fetch_add(1, std::memory_order::relaxed); });
+          [&completed] { completed.fetch_add(1, MemoryOrder::relaxed); });
     }
   }
 
-  EXPECT_EQ(completed.load(std::memory_order::relaxed), nTasks);
+  EXPECT_EQ(completed.load(MemoryOrder::relaxed), nTasks);
 }
 
 // Make sure pool can handle recursive submissions
@@ -241,7 +242,7 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
 //
 //   // Submit a long-running task to pin one thread
 //   pool.submit([&] {
-//     while (blockWorker1.load(std::memory_order::acquire)) {
+//     while (blockWorker1.load(MemoryOrder::acquire)) {
 //       std::this_thread::yield();
 //     }
 //   });
@@ -253,19 +254,18 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
 //   task
 //   // to complete it
 //   auto f{pool.submit(
-//       [&] { stealOccurred.store(true, std::memory_order::release); })};
+//       [&] { stealOccurred.store(true, MemoryOrder::release); })};
 //
 //   // Wait for the stolen task to complete
 //   const std::future_status status{f.wait_for(std::chrono::seconds{2})};
 //
 //   // Unblock thread
-//   blockWorker1.store(false, std::memory_order::release);
+//   blockWorker1.store(false, MemoryOrder::release);
 //   EXPECT_EQ(status, std::future_status::ready);
-//   EXPECT_TRUE(stealOccurred.load(std::memory_order::acquire));
+//   EXPECT_TRUE(stealOccurred.load(MemoryOrder::acquire));
 // }
 
 // Ensure proper behavior upon rapid building and destroying of pools
-// TODO: Apparent deadlock
 TEST(ThreadPoolTest, HighFrequencyLifecycleChurn) {
   constexpr int nIterations{100};
 

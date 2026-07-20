@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <threadweave/Queue.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <bitset>
@@ -11,6 +12,8 @@
 
 template <typename T>
 using Queue = ThreadWeave::Queue<T>;
+
+namespace MemoryOrder = ThreadWeave::MemoryOrder;
 
 // Make sure an empty queue returns std::nullopt
 TEST(QueueTest, EmptyPopReturnsNullopt) {
@@ -165,7 +168,7 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
         q.push(i * opsPerThread + j);
       }
 
-      activeProducers.fetch_sub(1, std::memory_order::release);
+      activeProducers.fetch_sub(1, MemoryOrder::release);
     });
   }
 
@@ -175,8 +178,7 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
         if (const auto val{q.pop()}) {
           consumedData[i].push_back(*val);
         } else {
-          if (activeProducers.load(std::memory_order::acquire) == 0 &&
-              q.empty()) {
+          if (activeProducers.load(MemoryOrder::acquire) == 0 && q.empty()) {
             break;
           }
 
@@ -223,7 +225,7 @@ TEST(QueueTest, RandomizedThreadOperationsTest) {
       while (true) {
         // Push if 0 - Pop if 1
         if (!dist(rng)) {
-          const int val{runCnt.fetch_add(1, std::memory_order::relaxed)};
+          const int val{runCnt.fetch_add(1, MemoryOrder::relaxed)};
 
           if (val >= nPushes) {
             break;

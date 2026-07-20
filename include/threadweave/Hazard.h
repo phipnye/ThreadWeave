@@ -1,7 +1,8 @@
 #ifndef TW_HAZARD_H
 #define TW_HAZARD_H
 
-#include <threadweave/Constants.h>
+#include <threadweave/enums.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <thread>
@@ -19,7 +20,7 @@ class ThreadHazardManager {
   // Pool of thread slots and their associated IDs
   struct ThreadSlots {
     std::atomic<std::thread::id> id;
-    std::atomic<void*> ptr[HazardsPerThread];
+    std::atomic<void*> ptr[static_cast<Index>(HazardSlot::COUNT)];
   };
   static inline ThreadSlots slotsPool[MaxThreads]{};
 
@@ -82,9 +83,11 @@ bool anyThreadsUsingNode(const void* nodePtr) noexcept;
  * destructor that clears the hazard once it goes out of scope indicating we're
  * no longer using the acquired pointer
  */
-template <Index idx>
+template <HazardSlot slot>
 class HazardGuard {
-  static_assert(idx >= 0 && idx < HazardsPerThread,
+  static_assert(std::is_same_v<std::underlying_type_t<HazardSlot>, Index>);
+  static constexpr Index idx{static_cast<Index>(slot)};  // map slot to index
+  static_assert(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
                 "Out-of-bounds hazard index");
 
  public:
@@ -118,22 +121,22 @@ class HazardGuard {
   T* acquirePointerWithHazard(const std::atomic<T*>& atomic) const;
 };
 
-template <Index idx>
-HazardGuard<idx>::~HazardGuard() {
+template <HazardSlot slot>
+HazardGuard<slot>::~HazardGuard() {
   std::atomic<void*>& hp{getThreadHazardPointer(idx)};
-  hp.store(nullptr, std::memory_order::release);
+  hp.store(nullptr, MemoryOrder::release);
 }
 
-template <Index idx>
+template <HazardSlot slot>
 template <typename T>
-T* HazardGuard<idx>::acquirePointerWithHazard(
+T* HazardGuard<slot>::acquirePointerWithHazard(
     const std::atomic<T*>& atomic) const {
   // Retrieve current thread's `idx`th hazard pointer
   std::atomic<void*>& hp{getThreadHazardPointer(idx)};
 
   // Continually fetch the atomic's pointer and try storing it in the hazard
   // pointer until we've successfully indicated use
-  T* node{atomic.load(std::memory_order::relaxed)};
+  T* node{atomic.load(MemoryOrder::relaxed)};
   T* tmp{nullptr};
 
   // Memory allocator does not free heap memory until the end of the program,
@@ -144,8 +147,8 @@ T* HazardGuard<idx>::acquirePointerWithHazard(
     // program order globally
     // https://stackoverflow.com/questions/67693687/possible-orderings-with-memory-order-seq-cst-and-memory-order-release
     tmp = node;
-    hp.store(tmp, std::memory_order::seq_cst);
-    node = atomic.load(std::memory_order::seq_cst);
+    hp.store(tmp, MemoryOrder::seq_cst);
+    node = atomic.load(MemoryOrder::seq_cst);
   } while (node != tmp);
 
   return node;

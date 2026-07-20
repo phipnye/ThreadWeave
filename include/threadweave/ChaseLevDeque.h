@@ -1,14 +1,13 @@
 #ifndef TW_DEQUE_H
 #define TW_DEQUE_H
 
-#include <threadweave/Constants.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <cassert>
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <print>
 #include <source_location>
 #include <type_traits>
 #include <vector>
@@ -152,11 +151,9 @@ ChaseLevDeque<T>::ChaseLevDeque() : data_{new RingBuffer{}} {
   // which are prone to std::bad_alloc exceptions.
 #ifndef NDEBUG
   if constexpr (!std::atomic<T>::is_always_lock_free) {
-    std::println(
-        std::cerr,
-        "[Warning] in {}\n'std::atomic<T>' is not lock-free on this target "
-        "hardware.",
-        std::source_location::current().function_name());
+    std::cerr
+        << "[Warning] in " << std::source_location::current().function_name()
+        << "\n'std::atomic<T>' is not lock-free on this target hardware.\n";
   }
 #endif
   garbage_.reserve(32);
@@ -166,7 +163,7 @@ template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
 ChaseLevDeque<T>::~ChaseLevDeque() {
-  delete data_.load(std::memory_order::relaxed);
+  delete data_.load(MemoryOrder::relaxed);
 }
 
 template <typename T>
@@ -176,58 +173,58 @@ void ChaseLevDeque<T>::push(T item) {
   // push() is only ever called by the single owner thread, and back_ is only
   // ever written by the owner, so this load can be relaxed: no other thread
   // writes back_, and we don't need it to synchronize with anything here.
-  const Index back{back_.load(std::memory_order::relaxed)};
+  const Index back{back_.load(MemoryOrder::relaxed)};
 
   // Must use acquire semantics. When the ring buffer is full, back and front
   // point to the same slot. This acquire synchronizes with a thief's successful
   // CAS (release) on front_, creating a happens-before edge that guarantees the
   // thief finishes reading the old item before this thread overwrites it
   // https://stackoverflow.com/questions/79976694/is-the-acquire-load-on-top-necessary-in-this-c11-chase-lev-deque-implementation
-  const Index front{front_.load(std::memory_order::acquire)};
-  RingBuffer* data{data_.load(std::memory_order::relaxed)};
+  const Index front{front_.load(MemoryOrder::acquire)};
+  RingBuffer* data{data_.load(MemoryOrder::relaxed)};
 
   // Deque is full, double the capacity of it
   if (back - front + 1 > data->capacity()) [[unlikely]] {
     data = expand(front, back);
 
 #ifndef NDEBUG
-    debugExpandCnt.fetch_add(1, std::memory_order::relaxed);
+    debugExpandCnt.fetch_add(1, MemoryOrder::relaxed);
 #endif
   }
 
   // Insert item at back index
-  (*data)[back].store(item, std::memory_order::relaxed);
+  (*data)[back].store(item, MemoryOrder::relaxed);
 
   // Ensure the newly pushed item is globally visible in memory before we
   // publish the updated back_ index. A release fence pairs with the acquire
   // load in steal(), ensuring that any thief thread that sees the new back_
   // index will also see the item we just wrote to the array.
-  std::atomic_thread_fence(std::memory_order::release);
-  back_.fetch_add(1, std::memory_order::relaxed);
+  std::atomic_thread_fence(MemoryOrder::release);
+  back_.fetch_add(1, MemoryOrder::relaxed);
 }
 
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
 std::optional<T> ChaseLevDeque<T>::pop() noexcept {
-  RingBuffer& data{*data_.load(std::memory_order::relaxed)};
-  const Index back{back_.fetch_sub(1, std::memory_order::relaxed) - 1};
+  RingBuffer& data{*data_.load(MemoryOrder::relaxed)};
+  const Index back{back_.fetch_sub(1, MemoryOrder::relaxed) - 1};
 
   // We just wrote to back_ and are about to read front_ (load). This seq_cst
   // fence prevents reordering the load of front_ to occur before the store to
   // back_ is globally visible. Without this, the owner could read a stale
   // front_, while a thief simultaneously reads a stale back_, causing both to
   // bypass the safety CAS and pop the exact same final element.
-  std::atomic_thread_fence(std::memory_order::seq_cst);
-  Index front{front_.load(std::memory_order::relaxed)};
+  std::atomic_thread_fence(MemoryOrder::seq_cst);
+  Index front{front_.load(MemoryOrder::relaxed)};
 
   // Empty deque
   if (front > back) {
-    back_.fetch_add(1, std::memory_order::relaxed);
+    back_.fetch_add(1, MemoryOrder::relaxed);
     return std::nullopt;
   }
 
-  std::optional<T> res{data[back].load(std::memory_order::relaxed)};
+  std::optional<T> res{data[back].load(MemoryOrder::relaxed)};
 
   // Front and back point to same element and there is a race condition
   // between whether consumer or producer gets it
@@ -238,13 +235,12 @@ std::optional<T> ChaseLevDeque<T>::pop() noexcept {
     // success ensures total global ordering of this arbitration. If the owner
     // wins the CAS, it gets the item. If it loses, a thief stole it first, and
     // the deque is now empty.
-    if (!front_.compare_exchange_strong(front, front + 1,
-                                        std::memory_order::seq_cst,
-                                        std::memory_order::relaxed)) {
+    if (!front_.compare_exchange_strong(front, front + 1, MemoryOrder::seq_cst,
+                                        MemoryOrder::relaxed)) {
       res.reset();
     }
 
-    back_.store(back + 1, std::memory_order::relaxed);
+    back_.store(back + 1, MemoryOrder::relaxed);
   }
 
   return res;
@@ -263,27 +259,26 @@ std::optional<T> ChaseLevDeque<T>::steal() noexcept {
   // could read back before front. Both threads could erroneously observe > 1
   // items, bypass the CAS safety net, and pop the same item, resulting in
   // duplicate item retrieval.
-  Index front{front_.load(std::memory_order::acquire)};
-  std::atomic_thread_fence(std::memory_order::seq_cst);
+  Index front{front_.load(MemoryOrder::acquire)};
+  std::atomic_thread_fence(MemoryOrder::seq_cst);
 
   // Empty queue (fence cannot serve as an acquisition barrier because it occurs
   // after the fence and thus will not synchronize with the release fence in
   // pop without acquire semantics)
-  if (const Index back{back_.load(std::memory_order::acquire)}; front >= back) {
+  if (const Index back{back_.load(MemoryOrder::acquire)}; front >= back) {
     return std::nullopt;
   }
 
   // Acquire pointer to return element
-  RingBuffer& data{*data_.load(std::memory_order::acquire)};
-  std::optional<T> res{data[front].load(std::memory_order::relaxed)};
+  RingBuffer& data{*data_.load(MemoryOrder::acquire)};
+  std::optional<T> res{data[front].load(MemoryOrder::relaxed)};
 
   // This CAS is symmetric to the CAS in pop(). It decides who wins the race for
   // the last element in the deque (whether competing against other thieves or
   // the owner thread), whoever successfully increments front_ via CAS claims
   // the element. A failed CAS means another thread got there first.
-  if (!front_.compare_exchange_strong(front, front + 1,
-                                      std::memory_order::seq_cst,
-                                      std::memory_order::relaxed)) {
+  if (!front_.compare_exchange_strong(front, front + 1, MemoryOrder::seq_cst,
+                                      MemoryOrder::relaxed)) {
     res.reset();
   }
 
@@ -294,8 +289,8 @@ template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
 bool ChaseLevDeque<T>::empty() const noexcept {
-  const Index front{front_.load(std::memory_order::relaxed)};
-  const Index back{back_.load(std::memory_order::relaxed)};
+  const Index front{front_.load(MemoryOrder::relaxed)};
+  const Index back{back_.load(MemoryOrder::relaxed)};
   return back <= front;
 }
 
@@ -306,13 +301,13 @@ ChaseLevDeque<T>::RingBuffer* ChaseLevDeque<T>::expand(const Index front,
                                                        const Index back) {
   // Note that we must double the capacity to retain a power of two for the
   // capacity for accurate wrap around indexing logic using a bitmask
-  RingBuffer* const oldArray{data_.load(std::memory_order::relaxed)};
+  RingBuffer* const oldArray{data_.load(MemoryOrder::relaxed)};
   RingBuffer* const newArray{new RingBuffer{oldArray->capacity() << 1}};
 
   // Copy over elements
   for (Index i{front}; i < back; ++i) {
-    (*newArray)[i].store((*oldArray)[i].load(std::memory_order::relaxed),
-                         std::memory_order::relaxed);
+    (*newArray)[i].store((*oldArray)[i].load(MemoryOrder::relaxed),
+                         MemoryOrder::relaxed);
   }
 
   // Can't delete oldArray right away because other threads may be using it. We
@@ -320,7 +315,7 @@ ChaseLevDeque<T>::RingBuffer* ChaseLevDeque<T>::expand(const Index front,
   garbage_.emplace_back(oldArray);
 
   // Update data pointer
-  data_.store(newArray, std::memory_order::release);
+  data_.store(newArray, MemoryOrder::release);
   return newArray;
 }
 

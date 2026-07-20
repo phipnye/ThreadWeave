@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <threadweave/ChaseLevDeque.h>
+#include <threadweave/utils.h>
 
 #include <algorithm>
 #include <atomic>
@@ -14,6 +15,8 @@
 
 template <typename T>
 using Deque = ThreadWeave::ChaseLevDeque<T>;
+
+namespace MemoryOrder = ThreadWeave::MemoryOrder;
 
 // Make sure an empty deque returns std::nullopt on pop and steal
 TEST(DequeTest, EmptyDequeReturnsNullopt) {
@@ -112,7 +115,7 @@ TEST(DequeTest, StealDuringExpandStress) {
 
   for (int i{0}; i < nThieves; ++i) {
     thieves.emplace_back([&] {
-      while (!stop.load(std::memory_order::acquire)) {
+      while (!stop.load(MemoryOrder::acquire)) {
         dq.steal();
       }
     });
@@ -123,11 +126,11 @@ TEST(DequeTest, StealDuringExpandStress) {
   }
 
   while (dq.pop()) {}
-  stop.store(true, std::memory_order::release);
+  stop.store(true, MemoryOrder::release);
   thieves.clear();
 
 #ifndef NDEBUG
-  const auto nExpands{dq.debugExpandCnt.load(std::memory_order::relaxed)};
+  const auto nExpands{dq.debugExpandCnt.load(MemoryOrder::relaxed)};
   std::println("# of expansions = {}", nExpands);
   ASSERT_GT(nExpands, 0) << "No expansion occurred — thieves may be outpacing "
                             "push; reduce nThieves";
@@ -147,7 +150,7 @@ TEST(DequeTest, NoUnnecessaryExpansions) {
 
   for (int i{0}; i < nThieves; ++i) {
     thieves.emplace_back([&] {
-      while (!stop.load(std::memory_order::acquire)) {
+      while (!stop.load(MemoryOrder::acquire)) {
         dq.steal();
       }
     });
@@ -158,12 +161,16 @@ TEST(DequeTest, NoUnnecessaryExpansions) {
   }
 
   while (dq.pop()) {}
-  stop.store(true, std::memory_order::release);
+  stop.store(true, MemoryOrder::release);
   thieves.clear();
 
 #ifndef NDEBUG
-  const auto nExpands{dq.debugExpandCnt.load(std::memory_order::relaxed)};
-  std::println("# of expansions = {}", nExpands);
+  const auto nExpands{dq.debugExpandCnt.load(MemoryOrder::relaxed)};
+
+  if (nExpands != 0) {
+    std::println("# of expansions = {}", nExpands);
+  }
+
   EXPECT_EQ(nExpands, 0)
       << "An expansion occurred when pushing an insufficient number of items";
 #else
@@ -189,9 +196,9 @@ TEST(DequeTest, RandomizedOperationsTest) {
         std::uniform_int_distribution sleepDist{1, 10};
 
         // Continually try stealing tasks
-        while (!ownerDone.load(std::memory_order::acquire)) {
+        while (!ownerDone.load(MemoryOrder::acquire)) {
           if (const auto val{dq.steal()}) {
-            actualCounts[*val].fetch_add(1, std::memory_order::relaxed);
+            actualCounts[*val].fetch_add(1, MemoryOrder::relaxed);
           } else {
             std::this_thread::sleep_for(
                 std::chrono::milliseconds{sleepDist(rng)});
@@ -201,12 +208,12 @@ TEST(DequeTest, RandomizedOperationsTest) {
         // Empty the rest of the deque
         while (!dq.empty()) {
           if (const auto val{dq.steal()}) {
-            actualCounts[*val].fetch_add(1, std::memory_order::relaxed);
+            actualCounts[*val].fetch_add(1, MemoryOrder::relaxed);
           }
         }
 
         // Signal this worker is done
-        activeWorkers.fetch_sub(1, std::memory_order::relaxed);
+        activeWorkers.fetch_sub(1, MemoryOrder::relaxed);
       });
     }
 
@@ -225,33 +232,33 @@ TEST(DequeTest, RandomizedOperationsTest) {
         }
 
         if (const auto val{dq.pop()}) {
-          actualCounts[*val].fetch_add(1, std::memory_order::relaxed);
+          actualCounts[*val].fetch_add(1, MemoryOrder::relaxed);
         }
       }
 
       // Empty the rest of the deque
       while (!dq.empty()) {
         if (const auto val{dq.pop()}) {
-          actualCounts[*val].fetch_add(1, std::memory_order::relaxed);
+          actualCounts[*val].fetch_add(1, MemoryOrder::relaxed);
         }
       }
 
       // Signal the owner is done
-      ownerDone.store(true, std::memory_order::release);
-      activeWorkers.fetch_sub(1, std::memory_order::relaxed);
+      ownerDone.store(true, MemoryOrder::release);
+      activeWorkers.fetch_sub(1, MemoryOrder::relaxed);
     }
 
     // Wait for the thieves to finish running
     thieves.clear();
 
     // No more workers expected at this point
-    EXPECT_EQ(activeWorkers.load(std::memory_order::relaxed), 0);
+    EXPECT_EQ(activeWorkers.load(MemoryOrder::relaxed), 0);
 
     // Make sure counts are as expected
     int total{0};
 
     for (int i{0}; i < nTasks; ++i) {
-      const int cnt{actualCounts[i].load(std::memory_order::relaxed)};
+      const int cnt{actualCounts[i].load(MemoryOrder::relaxed)};
       total += cnt;
       EXPECT_EQ(cnt, 1) << "Task ID " << i << " was processed " << cnt
                         << " times";
@@ -280,17 +287,17 @@ TEST(DequeTest, SingleItemRace) {
     for (int t{0}; t < nThieves; ++t) {
       thieves.emplace_back([&] {
         if (dq.steal()) {
-          winners.fetch_add(1, std::memory_order::relaxed);
+          winners.fetch_add(1, MemoryOrder::relaxed);
         }
       });
     }
 
     if (dq.pop()) {
-      winners.fetch_add(1, std::memory_order::relaxed);
+      winners.fetch_add(1, MemoryOrder::relaxed);
     }
 
     thieves.clear();
-    EXPECT_EQ(winners.load(std::memory_order::relaxed), 1);
+    EXPECT_EQ(winners.load(MemoryOrder::relaxed), 1);
     EXPECT_TRUE(dq.empty());
   }
 }

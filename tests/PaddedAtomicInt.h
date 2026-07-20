@@ -1,6 +1,6 @@
 #ifndef TW_PADDED_ATOMIC_INT_H
 #define TW_PADDED_ATOMIC_INT_H
-#include <threadweave/Constants.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 

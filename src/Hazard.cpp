@@ -1,5 +1,5 @@
-#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <stdexcept>
@@ -15,8 +15,8 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{MaxThreads} {
 
     // If the ID is unset, claim this slot and store this thread's ID
     if (std::thread::id emptyId{}; id.compare_exchange_strong(
-            emptyId, std::this_thread::get_id(), std::memory_order::acquire,
-            std::memory_order::relaxed)) {
+            emptyId, std::this_thread::get_id(), MemoryOrder::acquire,
+            MemoryOrder::relaxed)) {
       poolIdx_ = i;
       break;
     }
@@ -35,10 +35,10 @@ ThreadHazardManager::~ThreadHazardManager() noexcept {
   auto& [id, ptrs]{slotsPool[poolIdx_]};
 
   for (auto& ptr : ptrs) {
-    ptr.store(nullptr, std::memory_order::relaxed);
+    ptr.store(nullptr, MemoryOrder::relaxed);
   }
 
-  id.store(std::thread::id{}, std::memory_order::release);
+  id.store(std::thread::id{}, MemoryOrder::release);
 }
 
 // NOTE: Not marked as const because logically this is not const, the caller
@@ -51,13 +51,13 @@ std::atomic<void*>& ThreadHazardManager::getPointer(const Index idx) noexcept {
 bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) noexcept {
   for (const auto& [id, ptrs] : slotsPool) {
     // Empty id indicates no use
-    if (id.load(std::memory_order::relaxed) == std::thread::id{}) {
+    if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {
       continue;
     }
 
     // Otherwise, check if any pointers point to same memory location
     for (const auto& ptr : ptrs) {
-      if (ptr.load(std::memory_order::acquire) == nodePtr) {
+      if (ptr.load(MemoryOrder::acquire) == nodePtr) {
         return true;
       }
     }

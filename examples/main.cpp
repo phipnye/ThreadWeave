@@ -1,9 +1,6 @@
-#include <threadweave/Stack.h>
 #include <threadweave/ThreadPool.h>
 
 #include <cstddef>
-#include <future>
-#include <iostream>
 #include <print>
 #include <random>
 #include <vector>
@@ -39,7 +36,7 @@ int main() {
 
   // Setup thread pool and futures
   ThreadWeave::ThreadPool pool{};
-  std::vector<std::future<int>> futures{};
+  std::vector<ThreadWeave::Future<int>> futures{};
   futures.reserve(nTasks);
 
   // Submit tasks to the thread pool

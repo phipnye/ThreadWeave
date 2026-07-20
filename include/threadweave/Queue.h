@@ -1,10 +1,11 @@
 #ifndef TW_QUEUE_H
 #define TW_QUEUE_H
 
-#include <threadweave/Constants.h>
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
+#include <threadweave/enums.h>
+#include <threadweave/utils.h>
 
 #include <atomic>
 #include <optional>
@@ -18,8 +19,8 @@ namespace ThreadWeave {
  * @tparam T type of the object to store in the queue
  */
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 class Queue {
   // --- Data members
   using Node = Internal::QueueNode<std::optional<T>>;
@@ -68,82 +69,73 @@ class Queue {
 };
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 Queue<T>::Queue() {
   // Acquire a raw node block for the initial dummy node
   Node* dummy{Allocator::allocate()};
 
   // Explicitly initialize the dummy's data members
-  ::new (static_cast<void*>(&dummy->data)) std::optional<T>{std::nullopt};
-  ::new (static_cast<void*>(&dummy->next)) std::atomic<Node*>{nullptr};
+  dummy->data = std::nullopt;
 
   // Point both head and tail to the dummy
-  head_.store(dummy, std::memory_order::relaxed);
-  tail_.store(dummy, std::memory_order::relaxed);
+  head_.store(dummy, MemoryOrder::relaxed);
+  tail_.store(dummy, MemoryOrder::relaxed);
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 Queue<T>::~Queue() noexcept {
-  Node* head{head_.load(std::memory_order::relaxed)};
+  Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {
     Node* curr{head};
-    head = head->next.load(std::memory_order::relaxed);
-
-    // Explicitly destroy the node's data before returning that node back to the
-    // allocator
-    curr->data.~optional<T>();
+    head = head->next.load(MemoryOrder::relaxed);
     Allocator::deallocate(curr);
   }
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 void Queue<T>::push(T data) {
   // Construct new node to store data
   Node* pushNode{Allocator::allocate()};
-  ::new (static_cast<void*>(&pushNode->data)) std::optional<T>{std::move(data)};
-  ::new (static_cast<void*>(&pushNode->next)) std::atomic<Node*>(nullptr);
+  pushNode->data = std::move(data);
 
   while (true) {
     // Use an RAII guard for clearing hazard pointer when held tail pointer is
     // no longer in use
-    const Internal::HazardGuard<0> tailGuard{};
+    const Internal::HazardGuard<Internal::HazardSlot::Queue0> tailGuard{};
     Node* tailPtr{tailGuard.acquirePointerWithHazard(tail_)};
     std::atomic<Node*>& nextAtomic{tailPtr->next};
-    Node* nextPtr{nextAtomic.load(std::memory_order::acquire)};
+    Node* nextPtr{nextAtomic.load(MemoryOrder::acquire)};
 
     // Tail is lagging behind, try moving the tail pointer chain along so that
     // we can eventually attach our new node
     if (nextPtr != nullptr) {
-      tail_.compare_exchange_strong(tailPtr, nextPtr,
-                                    std::memory_order::release,
-                                    std::memory_order::relaxed);
+      tail_.compare_exchange_strong(tailPtr, nextPtr, MemoryOrder::release,
+                                    MemoryOrder::relaxed);
       continue;
     }
 
     // If our tail's next pointer now points to null, we can finally try
     // attaching it to the end of our list and then try moving the chain along
-    if (nextAtomic.compare_exchange_strong(nextPtr, pushNode,
-                                           std::memory_order::release,
-                                           std::memory_order::relaxed)) {
+    if (nextAtomic.compare_exchange_strong(
+            nextPtr, pushNode, MemoryOrder::release, MemoryOrder::relaxed)) {
       // Try updating tail to move further down the chain (failures will get
       // resolved by later operations that push further down the chain)
-      tail_.compare_exchange_strong(tailPtr, pushNode,
-                                    std::memory_order::release,
-                                    std::memory_order::relaxed);
+      tail_.compare_exchange_strong(tailPtr, pushNode, MemoryOrder::release,
+                                    MemoryOrder::relaxed);
       return;
     }
   }
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 std::optional<T> Queue<T>::pop() {
   // Pointer to the popped node
   Node* oldDummy{nullptr};
@@ -154,13 +146,13 @@ std::optional<T> Queue<T>::pop() {
   while (true) {
     // Acquire head and head->next pointers with hazard pointers indicating
     // use
-    const Internal::HazardGuard<0> headGuard{};
-    const Internal::HazardGuard<1> nextGuard{};
+    const Internal::HazardGuard<Internal::HazardSlot::Queue0> headGuard{};
+    const Internal::HazardGuard<Internal::HazardSlot::Queue1> nextGuard{};
     Node* headPtr{headGuard.acquirePointerWithHazard(head_)};
     Node* nextPtr{nextGuard.acquirePointerWithHazard(headPtr->next)};
 
     // Make sure headPtr is still aligned with head_ atomic
-    if (headPtr != head_.load(std::memory_order::acquire)) {
+    if (headPtr != head_.load(MemoryOrder::acquire)) {
       continue;
     }
 
@@ -171,18 +163,16 @@ std::optional<T> Queue<T>::pop() {
 
     // If the head and tail point to the same node, the tail is lagging and
     // needs to be pushed along
-    if (tail_.load(std::memory_order::acquire) == headPtr) {
-      tail_.compare_exchange_strong(headPtr, nextPtr,
-                                    std::memory_order::release,
-                                    std::memory_order::relaxed);
+    if (tail_.load(MemoryOrder::acquire) == headPtr) {
+      tail_.compare_exchange_strong(headPtr, nextPtr, MemoryOrder::release,
+                                    MemoryOrder::relaxed);
       continue;
     }
 
     // Try exchaning the current head with next. If successful, we've popped
     // the node and can return its data
-    if (head_.compare_exchange_strong(headPtr, nextPtr,
-                                      std::memory_order::acquire,
-                                      std::memory_order::relaxed)) {
+    if (head_.compare_exchange_strong(headPtr, nextPtr, MemoryOrder::acquire,
+                                      MemoryOrder::relaxed)) {
       // Steal the data from the next pointer
       res = std::move(nextPtr->data);
 
@@ -193,9 +183,6 @@ std::optional<T> Queue<T>::pop() {
   }
 
   if (oldDummy) {
-    // Explicitly destroy anything remaining of the old dummy's data
-    oldDummy->data.~optional<T>();
-
     // Return the node back to the allocator to check hazard pointers and
     // recycle
     Allocator::deallocate(oldDummy);
@@ -205,12 +192,12 @@ std::optional<T> Queue<T>::pop() {
 }
 
 template <typename T>
-  requires(std::is_nothrow_move_constructible_v<T> &&
-           std::is_nothrow_move_assignable_v<T>)
+  requires(std::is_nothrow_default_constructible_v<T> &&
+           std::is_nothrow_move_constructible_v<T>)
 bool Queue<T>::empty() const {
-  const Internal::HazardGuard<0> headGuard{};
+  const Internal::HazardGuard<Internal::HazardSlot::Queue0> headGuard{};
   Node* headPtr{headGuard.acquirePointerWithHazard(head_)};
-  return headPtr->next.load(std::memory_order::relaxed) == nullptr;
+  return headPtr->next.load(MemoryOrder::relaxed) == nullptr;
 }
 
 }  // namespace ThreadWeave

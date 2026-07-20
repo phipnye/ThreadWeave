@@ -4,85 +4,13 @@
 #include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
 
-#include <atomic>
-#include <cstddef>
-#include <cstdint>
+#include <cassert>
 #include <exception>
+#include <new>
 #include <type_traits>
 #include <utility>
 
 namespace ThreadWeave {
-
-namespace Internal {
-
-// Simple enum indicating the status a future
-enum class Status : std::int8_t { pending, ready, waiting };
-
-template <typename T>
-class FutureNode {
- public:
-  static constexpr Index PayLoadSize{128};  // TODO: Introduce macro to control
-
-  // --- Data members
-
-  // Result and exception storage
-  using ResultT = std::conditional_t<std::is_void_v<T>, std::byte, T>;
-  alignas(ResultT) std::byte resultBuffer_[sizeof(ResultT)]{};
-  std::exception_ptr exception_{nullptr};
-
-  // Status and function to execute
-  void (*execute_)(FutureNode*){nullptr};
-  alignas(std::max_align_t) std::byte payload_[PayLoadSize]{};
-  std::atomic<Status> state_{Status::pending};
-
-  // Internal data for our allocator to resolve memory management tasks
-  InternalNode<FutureNode> _internal{};
-
-  // --- Ctor, dtor, and assignment operators
-
-  // Default ctor and dtor
-  FutureNode() = default;
-  ~FutureNode() = default;
-
-  // Prevent move and copy operations
-  FutureNode(const FutureNode&) = delete;
-  FutureNode(FutureNode&&) = delete;
-  FutureNode& operator=(const FutureNode&) = delete;
-  FutureNode& operator=(FutureNode&&) = delete;
-
-  // --- Member functions
-
-  // Wait for the task to finish running
-  void wait() noexcept {
-    // Early-return if task already complete
-    if (state_.load(std::memory_order::acquire) == Status::ready) {
-      return;
-    }
-
-    // Try transitioning from waiting to running
-    auto expected{Status::pending};
-    state_.compare_exchange_strong(expected, Status::waiting);
-
-    // Wait until the task is ready (no longer waiting)
-    while (state_.load(std::memory_order::acquire) != Status::ready) {
-      state_.wait(Status::waiting, std::memory_order::relaxed);
-    }
-  }
-
-  // Notify when the task is done running
-  void notify() noexcept {
-    // Update to ready and notify waiting entities if it was originally in a
-    // waiting state
-    const Status oldState{
-        state_.exchange(Status::ready, std::memory_order::release)};
-
-    if (oldState == Status::waiting) {
-      state_.notify_one();
-    }
-  }
-};
-
-}  // namespace Internal
 
 /**
  * A template class providing a mechanism to retrieve results from an
@@ -98,24 +26,22 @@ class Future {
   Node* node_;
 
  public:
+  // --- Ctors, dtor, and assignment operators
+
   /**
    * Construct a future with a node containing the necessary data to do a task
    * asynchronously
    * @param node A pointer to a future node for storing results, exceptions,
    * functions, and payloads
    */
-  explicit Future(Node* node) : node_{node} {}
+  explicit Future(Node* node);
 
   /**
    * Safely return our node back to our allocator to return it to the free list
    * if it's no longer being used or save it for later if some thread is using
    * it
    */
-  ~Future() {
-    // We hand the node back to the allocator. If a worker is still running it,
-    // the worker's HazardGuard will cause the allocator to defer retiring it.
-    Allocator::deallocate(node_);
-  }
+  ~Future();
 
   // Only support move-semantics
   Future(const Future&) = delete;
@@ -134,22 +60,12 @@ class Future {
    * @param other Future to move assign from
    * @return a reference to the assigned Future
    */
-  Future& operator=(Future&& other) noexcept {
-    if (this != &other) {
-      // Return the node to the allocator before exchanging resources
-      Allocator::deallocate(node_);
-      node_ = std::exchange(other.node_, nullptr);
-    }
-
-    return *this;
-  }
+  Future& operator=(Future&& other) noexcept;
 
   /**
    * Blocks until the result becomes available
    */
-  void wait() noexcept {
-    node_->wait();  // assume non-null
-  }
+  void wait() noexcept;
 
   /**
    * The get member function waits (by calling wait()) until the shared state is
@@ -157,34 +73,95 @@ class Future {
    * If an exception was stored, then that exception will be thrown instead
    * @return the value stored in the future
    */
-  T get() {
-    // Wait until the result is ready
-    wait();
+  T get();
 
-    // Steal the future node
-    Node* node{std::exchange(node_, nullptr)};  // assume non-null
-
-    // Rethrow any stored exceptions
-    if (auto& exception{node->exception_}) {
-      // Steal exception pointer before deallocating and then rethrowing
-      auto ex{std::move(exception)};
-      Allocator::deallocate(node);
-      std::rethrow_exception(ex);
-    }
-
-    if constexpr (std::is_void_v<T>) {
-      Allocator::deallocate(node);
-      return;  // silences IDE
-    } else {
-      // Store results and free resources before returning result
-      T* resultBuffer{reinterpret_cast<T*>(node->resultBuffer_)};
-      T res{std::move(*resultBuffer)};
-      resultBuffer->~T();
-      Allocator::deallocate(node);
-      return res;
-    }
-  }
+ private:
+  /**
+   * Retire the passed node by decrementing it's internal reference count and
+   * deallocating it if the caller is the last to use it
+   * @param node A pointer to the future node that is no longer needed by the
+   * caller
+   */
+  static void retire(Node* node);
 };
+
+template <typename T>
+Future<T>::Future(Node* node) : node_{node} {}
+
+template <typename T>
+Future<T>::~Future() {
+  retire(node_);
+}
+
+template <typename T>
+Future<T>& Future<T>::operator=(Future&& other) noexcept {
+  if (this != &other) {
+    retire(node_);
+    node_ = std::exchange(other.node_, nullptr);
+  }
+
+  return *this;
+}
+
+template <typename T>
+void Future<T>::wait() noexcept {
+  assert(node_ && "Waiting on null node");
+  node_->wait();
+}
+
+template <typename T>
+T Future<T>::get() {
+  // Wait until the result is ready
+  wait();
+
+  // Steal the future node
+  assert(node_ && "Called get on a null future node");
+  Node* node{std::exchange(node_, nullptr)};
+
+  // Rethrow any stored exceptions
+  if (node->exception) {
+    // Steal exception pointer before deallocating and then rethrowing
+    auto ex{std::move(node->exception)};
+    retire(node);
+    std::rethrow_exception(ex);
+  }
+
+  if constexpr (std::is_void_v<T>) {
+    retire(node);
+    return;  // silences IDE
+  } else {
+    // Under the C++ standard (specifically [basic.life]), a new object is
+    // only "transparently replaceable" (meaning you can keep using the old
+    // pointer without UB) if all of the following conditions are met:
+    // 1. The new object is allocated at the exact same address as the old
+    // one.
+    // 2. The new object is the exact same type as the old one (ignoring
+    // cv-qualifiers).
+    // 3. The type does not contain any const-qualified fields (at any level
+    // of nesting).
+    // 4. The type does not contain any reference fields (at any level of
+    // nesting).
+    // 5. Both the old and new objects are the most-derived object (i.e., you
+    // aren't replacing a base class subobject of a larger class).
+    // resultBuffer is of type std::byte[] and decays to a byte* thus launder
+    // is necessary here to prevent violating 2.
+    T* resultBuffer{std::launder(reinterpret_cast<T*>(node->resultBuffer))};
+
+    // Store results and free resources before returning result
+    T res{std::move(*resultBuffer)};
+    resultBuffer->~T();
+    node->hasResult = false;
+    retire(node);
+    return res;
+  }
+}
+
+template <typename T>
+void Future<T>::retire(Node* node) {
+  if (node && node->release()) {
+    Allocator::deallocate(node);
+  }
+}
 
 }  // namespace ThreadWeave
 

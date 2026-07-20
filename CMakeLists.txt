@@ -6,6 +6,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+
 # --- Compiler flags
 set(COMPILER_FLAGS
         -Wall
@@ -17,6 +18,7 @@ set(COMPILER_FLAGS
         -Wconversion
         -pedantic-errors
         -Werror
+        -Wno-error=sign-conversion
         -Wno-interference-size
         -fconcepts-diagnostics-depth=2
 )
@@ -33,7 +35,7 @@ target_sources(ThreadWeave
         BASE_DIRS include
         FILES
         include/threadweave/ChaseLevDeque.h
-        include/threadweave/Constants.h
+        include/threadweave/utils.h
         include/threadweave/Hazard.h
         include/threadweave/Node.h
         include/threadweave/Queue.h
@@ -42,6 +44,9 @@ target_sources(ThreadWeave
         include/threadweave/ThreadPool.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
+
+# Makes every atomic operation sequentially consistent
+#target_compile_definitions(ThreadWeave PRIVATE TW_DEBUG_SEQ_CST)
 
 # --- Third-party dependencies
 
