@@ -12,7 +12,7 @@ chart across granularities
 4. overhead_latency.png - threadPoolOverheadBM: time/op vs. thread count
 
 Usage:
-    ./thread_pool_bench \
+    ./BenchProgram \
         --benchmark_repetitions=5 \
         --benchmark_report_aggregates_only=true \
         --benchmark_out=results.json \
