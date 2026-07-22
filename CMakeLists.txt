@@ -38,10 +38,11 @@ target_sources(ThreadWeave
         include/threadweave/utils.h
         include/threadweave/Hazard.h
         include/threadweave/Node.h
-        include/threadweave/Queue.h
+        include/threadweave/MichaelScottQueue.h
         include/threadweave/NodeAllocator.h
-        include/threadweave/Stack.h
+        include/threadweave/TreiberStack.h
         include/threadweave/ThreadPool.h
+        include/threadweave/VyukovQueue.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 
@@ -70,3 +71,4 @@ FetchContent_MakeAvailable(googlebenchmark googletest)
 add_subdirectory(examples)
 add_subdirectory(benchmark)
 add_subdirectory(tests)
+add_subdirectory(profile)

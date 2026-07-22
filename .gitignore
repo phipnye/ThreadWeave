@@ -73,3 +73,6 @@ Testing/
 
 # Archived files
 **/~archive/
+
+# Perf data
+perf.data

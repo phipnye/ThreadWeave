@@ -19,7 +19,7 @@ using Deque = ThreadWeave::ChaseLevDeque<T>;
 namespace MemoryOrder = ThreadWeave::MemoryOrder;
 
 // Make sure an empty deque returns std::nullopt on pop and steal
-TEST(DequeTest, EmptyDequeReturnsNullopt) {
+TEST(ChaseLevDequeTests, EmptyDequeReturnsNullopt) {
   Deque<int> dq{};
   EXPECT_TRUE(dq.empty());
   const auto popVal{dq.pop()};
@@ -31,7 +31,7 @@ TEST(DequeTest, EmptyDequeReturnsNullopt) {
 }
 
 // Trivial test for a single push and pop along with a single push and steal
-TEST(DequeTest, SinglePushPopSteal) {
+TEST(ChaseLevDequeTests, SinglePushPopSteal) {
   Deque<int> dq{};
   EXPECT_TRUE(dq.empty());
   constexpr int val1{42};
@@ -51,7 +51,7 @@ TEST(DequeTest, SinglePushPopSteal) {
 }
 
 // Basic sanity check for LIFO behavior of pops
-TEST(DequeTest, OwnerPopIsLifo) {
+TEST(ChaseLevDequeTests, OwnerPopIsLifo) {
   Deque<int> dq{};
   constexpr int n{100};
 
@@ -69,7 +69,7 @@ TEST(DequeTest, OwnerPopIsLifo) {
 }
 
 // Basic sanity check for FIFO behavior of steals
-TEST(DequeTest, ThiefStealIsFifo) {
+TEST(ChaseLevDequeTests, ThiefStealIsFifo) {
   Deque<int> dq{};
   constexpr int n{100};
 
@@ -86,7 +86,7 @@ TEST(DequeTest, ThiefStealIsFifo) {
 
 // Test to make sure the internal wrap around behavior of the ring buffer (uses
 // modulo/power 2 bitmasking) behaves as expected
-TEST(DequeTest, WrapAroundBoundary) {
+TEST(ChaseLevDequeTests, WrapAroundBoundary) {
   Deque<int> dq{};
   constexpr int n{100'000};
 
@@ -106,7 +106,7 @@ TEST(DequeTest, WrapAroundBoundary) {
 
 // Force expansion of the internal ring buffer while thieves may be looking at
 // old buffer to make sure there's no invalid pointer use
-TEST(DequeTest, StealDuringExpandStress) {
+TEST(ChaseLevDequeTests, StealDuringExpandStress) {
   Deque<int> dq{};
   constexpr int nThieves{2};
   constexpr int nItems{500'000};
@@ -141,7 +141,7 @@ TEST(DequeTest, StealDuringExpandStress) {
 
 // Push only a few items (equivalent of the initial capacity) and make sure no
 // expansions occur
-TEST(DequeTest, NoUnnecessaryExpansions) {
+TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
   Deque<int> dq{};
   constexpr int nThieves{2};
   constexpr int nItems{16};  // initial capacity
@@ -179,7 +179,7 @@ TEST(DequeTest, NoUnnecessaryExpansions) {
 }
 
 // Randomized race condition test checking for lost or duplicate items
-TEST(DequeTest, RandomizedOperationsTest) {
+TEST(ChaseLevDequeTests, RandomizedOperationsTest) {
   for (constexpr int testSet[]{10, 124, 3525, 43861};
        const int nTasks : testSet) {
     Deque<int> dq{};
@@ -268,7 +268,7 @@ TEST(DequeTest, RandomizedOperationsTest) {
   }
 }
 
-TEST(DequeTest, SingleItemRace) {
+TEST(ChaseLevDequeTests, SingleItemRace) {
   // Note that this test is slower due to the overhead of frequently creating
   // and destroying threads
   constexpr int nIterations{10'000};

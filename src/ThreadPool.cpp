@@ -1,4 +1,5 @@
 #include <threadweave/ThreadPool.h>
+#include <threadweave/VyukovQueue.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
@@ -10,11 +11,12 @@
 namespace ThreadWeave {
 
 ThreadPool::ThreadPool(const Index nThreads)
-    : threadQueues_{std::make_unique<ChaseLevDeque<NodeBase*>[]>(nThreads)},
-      globalQueue_{},
+    : threadDeques_{std::make_unique<ChaseLevDeque<NodeBase*>[]>(nThreads)},
+      externalQueues_{std::make_unique<VyukovQueue<NodeBase*>[]>(nThreads)},
       workers_{},
       nThreads_{nThreads},
       nPendingTasks_{0},
+      externalId_{0},
       taskSignal_{0},
       stop_{false} {
   // Fill pool with worker threads
@@ -37,22 +39,35 @@ ThreadPool::~ThreadPool() {
 }
 
 void ThreadPool::workerLoop(const Index threadId) {
+  // Store information related to the worker so that it can write to its own
+  // deque if submissions happen "recursively" (i.e., a pushed task submits new
+  // tasks)
+  currentPool = this;
+  workerId = threadId;
+
   // Index to try to steal from (will start with the 'next' thread)
   Index stealId{threadId};
 
   while (true) {
-    // Take tasks from global queue and move them to thread's queue
-    if (auto task{globalQueue_.pop()}) {
-      threadQueues_[threadId].push(*task);  // note task is trivially copyable
+    // Drain tasks from the thread's queue for tasks submitted by non-workers
+    // (we drain up to nThreads at a time to promote task stealing since other
+    // threads cannot steal from the thread's personal queue while also
+    // preventing continually popping where no tasks get done)
+    for (Index _{0}; _ < nThreads_; ++_) {
+      if (auto taskNode{externalQueues_[threadId].pop()}) {
+        threadDeques_[threadId].push(*taskNode);
+      } else {
+        break;  // no more tasks
+      }
     }
 
     // Try taking a task from our current thread's work queue first
-    if (auto task{threadQueues_[threadId].pop()}) {
+    if (auto taskNode{threadDeques_[threadId].pop()}) {
       // Popped task is a future node, cast to base class pointer and call
       // execute function pointer data member which casts the void* node to the
       // correct templated node pointer
-      NodeBase* const base{*task};
-      base->execute(base);
+      NodeBase* const baseNode{*taskNode};
+      baseNode->execute(baseNode);
       nPendingTasks_.fetch_sub(1, MemoryOrder::release);
       continue;
     }
@@ -71,9 +86,9 @@ void ThreadPool::workerLoop(const Index threadId) {
       }
 
       // Successful stealing of a task
-      if (auto task{threadQueues_[stealId].steal()}) {
-        NodeBase* const base{*task};
-        base->execute(base);
+      if (auto taskNode{threadDeques_[stealId].steal()}) {
+        NodeBase* const baseNode{*taskNode};
+        baseNode->execute(baseNode);
         stoleTask = true;
         nPendingTasks_.fetch_sub(1, MemoryOrder::release);
         break;

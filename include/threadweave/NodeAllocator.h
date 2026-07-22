@@ -16,7 +16,7 @@ namespace ThreadWeave::Internal {
  * @tparam NodesPerBlock number of nodes to allocate at a time (larger values
  * result in fewer heap allocations but could be more wasteful of memory)
  */
-template <AllocatorEligibleNode Node, Index NodesPerBlock = 256>
+template <AllocatorEligibleNode Node, Index NodesPerBlock = 64>
 class NodeAllocator {
   // Take head and see which nodes we can steal from the saved list and move to
   // the free list

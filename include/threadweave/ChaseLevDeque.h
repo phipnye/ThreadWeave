@@ -1,5 +1,5 @@
-#ifndef TW_DEQUE_H
-#define TW_DEQUE_H
+#ifndef TW_CHASE_LEV_DEQUE_H
+#define TW_CHASE_LEV_DEQUE_H
 
 #include <threadweave/utils.h>
 
@@ -24,7 +24,7 @@ namespace ThreadWeave {
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
-class ChaseLevDeque {
+class alignas(Internal::CacheLineSize) ChaseLevDeque {
   // --- A helper array class for our work-stealing deque.
   class RingBuffer {
     static constexpr Index defaultCapacity{16};

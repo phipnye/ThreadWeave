@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <threadweave/Queue.h>
+#include <threadweave/TreiberStack.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
@@ -11,95 +11,102 @@
 #include <vector>
 
 template <typename T>
-using Queue = ThreadWeave::Queue<T>;
+using Stack = ThreadWeave::TreiberStack<T>;
 
 namespace MemoryOrder = ThreadWeave::MemoryOrder;
 
-// Make sure an empty queue returns std::nullopt
-TEST(QueueTest, EmptyPopReturnsNullopt) {
-  Queue<int> q{};
-  EXPECT_TRUE(q.empty());
-  const auto val{q.pop()};
+// Make sure an empty stack returns std::nullopt
+TEST(TreiberStackTests, EmptyPopReturnsNullopt) {
+  Stack<int> stk{};
+  EXPECT_TRUE(stk.empty());
+  const auto val{stk.pop()};
   EXPECT_FALSE(val.has_value());
-  EXPECT_TRUE(q.empty());
+  EXPECT_TRUE(stk.empty());
 }
 
 // Trivial single push/pop
-TEST(QueueTest, SinglePushPop) {
-  Queue<int> q{};
-  EXPECT_TRUE(q.empty());
-  q.push(42);
-  EXPECT_FALSE(q.empty());
-  const auto val{q.pop()};
+TEST(TreiberStackTests, SinglePushPop) {
+  Stack<int> stk{};
+  EXPECT_TRUE(stk.empty());
+  stk.push(42);
+  EXPECT_FALSE(stk.empty());
+  const auto val{stk.pop()};
   ASSERT_TRUE(val.has_value());
   EXPECT_EQ(*val, 42);
-  EXPECT_TRUE(q.empty());
-  EXPECT_FALSE(q.pop().has_value());
+  EXPECT_TRUE(stk.empty());
+  EXPECT_FALSE(stk.pop().has_value());
 }
 
-// Make sure the queue follows FIFO when executed sequentially
-TEST(QueueTest, QueueIsFifo) {
+// Make sure the stack follows LIFO when executed sequentially
+TEST(TreiberStackTests, StackIsLIFO) {
   constexpr int n{100};
-  Queue<int> q{};
+  Stack<int> stk{};
 
-  // Push 0-99 into queue
+  // Push 0-99 into stack
   for (int i{0}; i < n; ++i) {
-    q.push(i);
+    stk.push(i);
   }
 
-  // Pop 0-99 from the queue to ensure data integrity and FIFO behavior
-  for (int i{0}; i < n; ++i) {
-    EXPECT_FALSE(q.empty());
-    const auto val{q.pop()};
-    ASSERT_TRUE(val.has_value());
+  // Pop 99-0 from the stack to ensure data integrity and LIFO behavior
+  for (int i{n - 1}; i > -1; --i) {
+    EXPECT_FALSE(stk.empty());
+    const auto val{stk.pop()};
+    EXPECT_TRUE(val.has_value());
     EXPECT_EQ(*val, i);
   }
 
-  EXPECT_TRUE(q.empty());
+  // Make sure the stack is now empty
+  EXPECT_TRUE(stk.empty());
 }
 
-// Test FIFO against a move only type
-TEST(QueueTest, MoveOnlyType) {
+// Test LIFO against a move only type
+TEST(TreiberStackTests, MoveOnlyType) {
+  // Slight modification to previous test except now with a move-only unique ptr
   constexpr int n{100};
-  Queue<std::unique_ptr<int>> q{};
+  Stack<std::unique_ptr<int>> stk{};
 
+  // Push unique pointers maintaining values 0-99 into the stack
   for (int i{0}; i < n; ++i) {
-    q.push(std::make_unique<int>(i));
+    stk.push(std::make_unique<int>(i));
   }
 
-  for (int i{0}; i < n; ++i) {
-    EXPECT_FALSE(q.empty());
-    const auto val{q.pop()};
-    ASSERT_TRUE(val.has_value());
-    ASSERT_NE(*val, nullptr);
+  // Pop 99-0 from the stack to ensure data integrity and LIFO behavior
+  for (int i{n - 1}; i > -1; --i) {
+    EXPECT_FALSE(stk.empty());
+    const auto val{stk.pop()};
+    EXPECT_TRUE(val.has_value());
+    EXPECT_NE(*val, nullptr);
     EXPECT_EQ(**val, i);
   }
 
-  EXPECT_TRUE(q.empty());
+  // Make sure the stack is now empty
+  EXPECT_TRUE(stk.empty());
 }
 
 // Test concurrent pushes and make sure no data is lost
-TEST(QueueTest, ConcurrentPushes) {
-  Queue<int> q{};
+TEST(TreiberStackTests, ConcurrentPushes) {
+  Stack<int> stk{};
   constexpr int nThreads{8};
   constexpr int itemsPerThread{1000};
   std::vector<std::jthread> threads{};
   threads.reserve(nThreads);
 
+  // Have multiple threads concurrently push items onto the stack
   for (int t{0}; t < nThreads; ++t) {
-    threads.emplace_back([=, &q] {
+    threads.emplace_back([=, &stk] {
       for (int i{0}; i < itemsPerThread; ++i) {
-        q.push(t * itemsPerThread + i);
+        stk.push(t * itemsPerThread + i);
       }
     });
   }
 
   threads.clear();
-  EXPECT_FALSE(q.empty());
+  EXPECT_FALSE(stk.empty());
   constexpr int maxVal{nThreads * itemsPerThread};
   std::bitset<maxVal> seen{};
 
-  while (const auto val{q.pop()}) {
+  // Make sure we retrieve every item that was pushed
+  while (const auto val{stk.pop()}) {
     const auto idx{*val};
     EXPECT_GE(idx, 0);
     EXPECT_LT(idx, maxVal);
@@ -108,35 +115,39 @@ TEST(QueueTest, ConcurrentPushes) {
   }
 
   EXPECT_TRUE(seen.all());
-  EXPECT_TRUE(q.empty());
+  EXPECT_TRUE(stk.empty());
 }
 
 // Test concurrent pops and make sure no data is lost
-TEST(QueueTest, ConcurrentPops) {
-  Queue<int> q{};
+TEST(TreiberStackTests, ConcurrentPops) {
+  Stack<int> stk{};
   constexpr int totalItems{10'000};
   constexpr int nThreads{8};
 
+  // Push 0-9999 onto stack
   for (int i{0}; i < totalItems; ++i) {
-    q.push(i);
+    stk.push(i);
   }
 
   std::vector<std::jthread> threads{};
   std::vector<std::vector<int>> threadResults(nThreads);
   threads.reserve(nThreads);
 
+  // Have multiple threads try to pop from the stack and push it to their own
+  // set of results
   for (int t{0}; t < nThreads; ++t) {
-    threads.emplace_back([=, &threadResults, &q] {
-      while (const auto val{q.pop()}) {
+    threads.emplace_back([=, &threadResults, &stk] {
+      while (const auto val{stk.pop()}) {
         threadResults[t].push_back(*val);
       }
     });
   }
 
   threads.clear();
-  EXPECT_TRUE(q.empty());
+  EXPECT_TRUE(stk.empty());
   std::bitset<totalItems> seen{};
 
+  // Make sure we got back every value
   for (const auto& tRes : threadResults) {
     for (const int item : tRes) {
       EXPECT_GE(item, 0);
@@ -150,11 +161,13 @@ TEST(QueueTest, ConcurrentPops) {
 }
 
 // Ensure data integrity with both concurrent pushes and pops
-TEST(QueueTest, ConcurrentProducerConsumer) {
-  Queue<int> q{};
+TEST(TreiberStackTests, ConcurrentProducerConsumer) {
+  Stack<int> stk{};
   constexpr int nPairs{4};
   constexpr int opsPerThread{5000};
 
+  // Have multiple producers and consumers concurrently push to and pop from the
+  // stack
   std::vector<std::jthread> producers{};
   std::vector<std::jthread> consumers{};
   producers.reserve(nPairs);
@@ -163,9 +176,9 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
   std::vector<std::vector<int>> consumedData(nPairs);
 
   for (int i{0}; i < nPairs; ++i) {
-    producers.emplace_back([=, &q, &activeProducers] {
+    producers.emplace_back([=, &stk, &activeProducers] {
       for (int j{0}; j < opsPerThread; ++j) {
-        q.push(i * opsPerThread + j);
+        stk.push(i * opsPerThread + j);
       }
 
       activeProducers.fetch_sub(1, MemoryOrder::release);
@@ -173,12 +186,12 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
   }
 
   for (int i{0}; i < nPairs; ++i) {
-    consumers.emplace_back([=, &q, &activeProducers, &consumedData] {
+    consumers.emplace_back([=, &stk, &activeProducers, &consumedData] {
       while (true) {
-        if (const auto val{q.pop()}) {
+        if (const auto val{stk.pop()}) {
           consumedData[i].push_back(*val);
         } else {
-          if (activeProducers.load(MemoryOrder::acquire) == 0 && q.empty()) {
+          if (activeProducers.load(MemoryOrder::acquire) == 0 && stk.empty()) {
             break;
           }
 
@@ -190,8 +203,9 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
 
   producers.clear();
   consumers.clear();
-  EXPECT_TRUE(q.empty());
+  EXPECT_TRUE(stk.empty());
 
+  // Make sure we pushed and popped every expected item
   constexpr int totalItems{nPairs * opsPerThread};
   std::bitset<totalItems> seen{};
 
@@ -207,46 +221,50 @@ TEST(QueueTest, ConcurrentProducerConsumer) {
   EXPECT_TRUE(seen.all());
 }
 
-// Randomized race condition test checking for lost or duplicate items
-TEST(QueueTest, RandomizedThreadOperationsTest) {
-  constexpr int nThreads{8};
+TEST(TreiberStackTests, RandomizedThreadOperationsTest) {
   constexpr int nPushes{100'000};
-  Queue<int> q{};
+  constexpr int nThreads{8};
+  Stack<int> stk{};
   std::atomic<int> runCnt{0};
   std::vector<std::jthread> threads{};
   threads.reserve(nThreads);
   std::vector<std::vector<int>> consumedData(nThreads);
 
+  // Try having the threads randomly push and pop data from the stack
   for (int i{0}; i < nThreads; ++i) {
-    threads.emplace_back([=, &q, &runCnt, &consumedData] {
+    threads.emplace_back([=, &stk, &runCnt, &consumedData] {
+      // Random selection between a push and pop operation
       std::mt19937 rng{std::random_device{}()};
       std::uniform_int_distribution dist{0, 1};
 
       while (true) {
         // Push if 0 - Pop if 1
         if (!dist(rng)) {
+          // Try pushing
           const int val{runCnt.fetch_add(1, MemoryOrder::relaxed)};
 
           if (val >= nPushes) {
             break;
           }
 
-          q.push(val);
+          stk.push(val);
         } else {
-          if (const auto val{q.pop()}) {
+          // Try popping
+          if (const auto val{stk.pop()}) {
             consumedData[i].push_back(*val);
           }
         }
       }
 
-      while (const auto val{q.pop()}) {
+      // Continue popping until stack is empty
+      while (const auto val{stk.pop()}) {
         consumedData[i].push_back(*val);
       }
     });
   }
 
   threads.clear();
-  EXPECT_TRUE(q.empty());
+  EXPECT_TRUE(stk.empty());
   std::bitset<nPushes> seen{};
 
   for (const auto& data : consumedData) {

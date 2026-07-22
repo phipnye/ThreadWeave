@@ -3,8 +3,8 @@
 
 #include <threadweave/ChaseLevDeque.h>
 #include <threadweave/Future.h>
+#include <threadweave/VyukovQueue.h>
 #include <threadweave/NodeAllocator.h>
-#include <threadweave/Queue.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
@@ -22,19 +22,27 @@
 namespace ThreadWeave {
 
 /**
- * An implementation of a thread pool class built upon a lock-free Michael-Scott
- * queue of tasks shared by all threads and thread-local Chase-Lev Deques with
- * the capability for threads to steal tasks from one another.
+ * An implementation of a thread pool class built upon lock-free Michael-Scott
+ * queues of tasks for non-worker threads to submit to and thread-specific
+ * Chase-Lev Deques with the capability for threads to steal tasks from one
+ * another.
  */
 class ThreadPool {
   using NodeBase = Internal::FutureNodeBase;
 
+  // Thread-local information that keeps track of whether the thread submitting
+  // a task is a worker in which case it can write directly to its own work
+  // deque that must follow SPMC semantics
+  static thread_local inline ThreadPool* currentPool{nullptr};
+  static thread_local inline Index workerId{-1};
+
   // --- Data members
-  std::unique_ptr<ChaseLevDeque<NodeBase*>[]> threadQueues_;
-  Queue<NodeBase*> globalQueue_;
+  std::unique_ptr<ChaseLevDeque<NodeBase*>[]> threadDeques_;
+  std::unique_ptr<VyukovQueue<NodeBase*>[]> externalQueues_;
   std::vector<std::jthread> workers_;
   const Index nThreads_;
   std::atomic<Index> nPendingTasks_;
+  std::atomic<Index> externalId_;
   std::counting_semaphore<> taskSignal_;
   std::atomic<bool> stop_;
 
@@ -111,19 +119,19 @@ auto ThreadPool::submit(F&& f, Args&&... args)
                 "FutureNode payload buffer guarantees.");
 
   // Retrive an allocation for a node
-  Node* node{Allocator::allocate()};
+  Node* taskNode{Allocator::allocate()};
 
   // Construct the callable object directly inside the node's byte payload
-  ::new (static_cast<void*>(node->payload)) BoundTask{std::move(boundTask)};
+  ::new (static_cast<void*>(taskNode->payload)) BoundTask{std::move(boundTask)};
 
   // Bind the execution layout
-  node->execute = [](NodeBase* base) {
+  taskNode->execute = [](NodeBase* base) {
     // Re-cast back to a node pointer
     Node* self{static_cast<Node*>(base)};
 
-    // Under the C++ standard (specifically [basic.life]), a new object is only
-    // "transparently replaceable" (meaning you can keep using the old pointer
-    // without UB) if all of the following conditions are met:
+    // Per the standard, a new object is only "transparently replaceable"
+    // (meaning you can keep using the old pointer without UB) if all of the
+    // following conditions are met:
     // 1. The new object is allocated at the exact same address as the old one.
     // 2. The new object is the exact same type as the old one (ignoring
     // cv-qualifiers).
@@ -146,7 +154,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     } else {
       try {
         ::new (static_cast<void*>(self->resultBuffer)) ReturnType{(*task)()};
-        self->hasResult = true;
+        self->hasResult = true;  // helps track need to call destructor
       } catch (...) {
         self->exception = std::current_exception();
       }
@@ -164,12 +172,23 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     }
   };
 
-  // Push tasks to global queue so threads can later take from it (note push
-  // synchronizes with pop and hence relaxed memory ordering suffices here)
+  // push synchronizes with pop and hence relaxed memory ordering suffices here
   nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
-  globalQueue_.push(static_cast<NodeBase*>(node));
+
+  // If thread submitting task is a worker, push the task directly to its own
+  // work deque
+  if (currentPool == this) {
+    threadDeques_[workerId].push(taskNode);
+  } else {
+    // Otherwise, use a round-robin approach to push a task to a thread's
+    // michael-scott queue which supports MPMC semantics but requires the worker
+    // to transfer the tasks for them to be stolen
+    const Index idx{externalId_.fetch_add(1, MemoryOrder::relaxed) % nThreads_};
+    externalQueues_[idx].push(taskNode);
+  }
+
   taskSignal_.release();
-  return Future<ReturnType>{node};
+  return Future<ReturnType>{taskNode};
 }
 
 }  // namespace ThreadWeave

@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 
+#include "BS_thread_pool.hpp"
+
 using ThreadWeave::Future;
 using ThreadWeave::Index;
 using ThreadWeave::ThreadPool;
@@ -30,6 +32,12 @@ static void nIterArgs(benchmark::Benchmark* b) {
   }
 }
 
+static void nThreadArgs(benchmark::Benchmark* b) {
+  for (const Index nThreads : ThreadArgs) {
+    b->Arg(nThreads);
+  }
+}
+
 static void nIterAndThreadsArgs(benchmark::Benchmark* b) {
   for (const Index nIter : IterArgs) {
     for (const Index nThreads : ThreadArgs) {
@@ -39,6 +47,7 @@ static void nIterAndThreadsArgs(benchmark::Benchmark* b) {
 }
 
 // --- 1. Pure overhead benchmark:
+
 // We use a nearly free function to isolate the cost of pushing and popping task
 // from the thread pool giving us a sense of latency
 static void threadPoolOverheadBM(benchmark::State& state) {
@@ -54,7 +63,24 @@ static void threadPoolOverheadBM(benchmark::State& state) {
 }
 
 BENCHMARK(threadPoolOverheadBM)
-    ->Apply(nIterArgs)
+    ->Apply(nThreadArgs)
+    ->UseRealTime()
+    ->Unit(benchmark::kMicrosecond);
+
+static void bsThreadPoolOverheadBM(benchmark::State& state) {
+  const Index nThreads{state.range(0)};
+  BS::thread_pool pool{static_cast<std::size_t>(nThreads)};
+
+  for (auto _ : state) {
+    auto f{pool.submit_task([] { return 1; })};
+    benchmark::DoNotOptimize(f.get());
+  }
+
+  state.SetItemsProcessed(state.iterations());
+}
+
+BENCHMARK(bsThreadPoolOverheadBM)
+    ->Apply(nThreadArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMicrosecond);
 
@@ -149,6 +175,27 @@ static double runPool(const Index nThreads, const Index nTasks,
   return totalSums;
 }
 
+// Helper to run tasks using BS::thread_pool
+static double runBSPool(const Index nThreads, const Index nTasks,
+                        const Index nIter) {
+  BS::thread_pool pool{static_cast<std::size_t>(nThreads)};
+  std::vector<std::future<double>> futures{};
+  futures.reserve(nTasks);
+
+  for (Index t{0}; t < nTasks; ++t) {
+    futures.push_back(pool.submit_task([nIter] { return busyWork(nIter); }));
+  }
+
+  double totalSums{0.0};
+
+  for (auto& f : futures) {
+    totalSums += f.get();
+    benchmark::DoNotOptimize(totalSums);
+  }
+
+  return totalSums;
+}
+
 // --- Benchmarks
 
 // Sequential sweep
@@ -218,6 +265,24 @@ static void poolBM(benchmark::State& state) {
 }
 
 BENCHMARK(poolBM)
+    ->Apply(nIterAndThreadsArgs)
+    ->UseRealTime()
+    ->Unit(benchmark::kMillisecond);
+
+static void bsPoolBM(benchmark::State& state) {
+  const Index nIter{state.range(0)};
+  const Index nThreads{state.range(1)};
+
+  for (auto _ : state) {
+    runBSPool(nThreads, NumTasks, nIter);
+  }
+
+  state.SetItemsProcessed(state.iterations() * NumTasks);
+  state.counters["nIter"] = static_cast<double>(nIter);
+  state.counters["nThreads"] = static_cast<double>(nThreads);
+}
+
+BENCHMARK(bsPoolBM)
     ->Apply(nIterAndThreadsArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);

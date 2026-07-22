@@ -18,7 +18,7 @@ template <typename T>
 using Future = ThreadWeave::Future<T>;
 
 // Try submitting just a single simple task
-TEST(ThreadPoolTest, SingleTask) {
+TEST(ThreadPoolTests, SingleTask) {
   ThreadPool pool{1};
   constexpr int expectedVal{42};
   Future<int> f{pool.submit([] { return expectedVal; })};
@@ -26,7 +26,7 @@ TEST(ThreadPoolTest, SingleTask) {
 }
 
 // Try submitting multiple simple tasks
-TEST(ThreadPoolTest, MultipleTasks) {
+TEST(ThreadPoolTests, MultipleTasks) {
   constexpr int nTasks{1'000};
   ThreadPool pool{1};
   std::vector<Future<int>> futures{};
@@ -52,7 +52,7 @@ TEST(ThreadPoolTest, MultipleTasks) {
 }
 
 // Verify pool works with one worker
-TEST(ThreadPoolTest, SingleWorkerEdgeCase) {
+TEST(ThreadPoolTests, SingleWorkerEdgeCase) {
   ThreadPool pool{1};
   constexpr int nTasks{100};
   std::vector<Future<int>> futures{};
@@ -68,7 +68,7 @@ TEST(ThreadPoolTest, SingleWorkerEdgeCase) {
 }
 
 // Make sure pool preserves exceptions
-TEST(ThreadPoolTest, PreservesException) {
+TEST(ThreadPoolTests, PreservesException) {
   ThreadPool pool{2};
   auto f{pool.submit([] {
     throw std::runtime_error{"Error"};
@@ -78,7 +78,7 @@ TEST(ThreadPoolTest, PreservesException) {
 }
 
 // Verify exceptions do not kill workers
-TEST(ThreadPoolTest, WorkersSurviveExceptions) {
+TEST(ThreadPoolTests, WorkersSurviveExceptions) {
   constexpr int nTasks{100};
   ThreadPool pool{4};
   std::vector<Future<void>> failures{};
@@ -97,7 +97,7 @@ TEST(ThreadPoolTest, WorkersSurviveExceptions) {
 
 // Make sure tasks finish in destructor and that run longer do not prevent other
 // tasks from completing
-TEST(ThreadPoolTest, HandlesMixedTaskDurations) {
+TEST(ThreadPoolTests, HandlesMixedTaskDurations) {
   constexpr int nTasks{1'000};
   std::atomic<int> completed{0};
 
@@ -119,7 +119,7 @@ TEST(ThreadPoolTest, HandlesMixedTaskDurations) {
 }
 
 // Make sure multiple threads can submit work concurrently
-TEST(ThreadPoolTest, ConcurrentSubmissions) {
+TEST(ThreadPoolTests, ConcurrentSubmissions) {
   constexpr int nSubmitters{8};
   constexpr int tasksPerSubmitter{1'000};
   ThreadPool pool{};
@@ -156,7 +156,7 @@ TEST(ThreadPoolTest, ConcurrentSubmissions) {
 }
 
 // Make sure tasks run concurrently on different worker threads
-TEST(ThreadPoolTest, RunsTasksConcurrently) {
+TEST(ThreadPoolTests, RunsTasksConcurrently) {
   constexpr int nTasks{100'000};
   constexpr ThreadWeave::Index nThreads{8};
   std::atomic<int> uniqueThreadCount{0};
@@ -182,7 +182,7 @@ TEST(ThreadPoolTest, RunsTasksConcurrently) {
 }
 
 // Make sure exceptions from one task don't break other tasks
-TEST(ThreadPoolTest, ContinuesAfterException) {
+TEST(ThreadPoolTests, ContinuesAfterException) {
   ThreadPool pool{2};
 
   auto bad{pool.submit([] {
@@ -196,7 +196,7 @@ TEST(ThreadPoolTest, ContinuesAfterException) {
 }
 
 // Make sure submitting many tasks doesn't lose any
-TEST(ThreadPoolTest, HandlesManyTasks) {
+TEST(ThreadPoolTests, HandlesManyTasks) {
   constexpr int nTasks{100'000};
   std::atomic<int> completed{0};
 
@@ -212,7 +212,7 @@ TEST(ThreadPoolTest, HandlesManyTasks) {
 }
 
 // Make sure pool can handle recursive submissions
-TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
+TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
   // Must have a sufficient number of threads to perform tasks recursively
   ThreadPool pool{8};
 
@@ -235,7 +235,7 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
 }
 
 // Make sure idle threads steal tasks from working threads
-// TEST(ThreadPoolTest, VerificationOfWorkStealing) {
+// TEST(ThreadPoolTests, VerificationOfWorkStealing) {
 //   ThreadPool pool{2};
 //   std::atomic<bool> blockWorker1{true};
 //   std::atomic<bool> stealOccurred{false};
@@ -266,7 +266,7 @@ TEST(ThreadPoolTest, HandlesNestedTaskSubmission) {
 // }
 
 // Ensure proper behavior upon rapid building and destroying of pools
-TEST(ThreadPoolTest, HighFrequencyLifecycleChurn) {
+TEST(ThreadPoolTests, HighFrequencyLifecycleChurn) {
   constexpr int nIterations{100};
 
   for (int i{0}; i < nIterations; ++i) {

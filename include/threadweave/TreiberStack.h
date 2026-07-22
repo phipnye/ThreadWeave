@@ -1,5 +1,5 @@
-#ifndef TW_STACK_H
-#define TW_STACK_H
+#ifndef TW_TREIBER_STACK_H
+#define TW_TREIBER_STACK_H
 
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
@@ -22,7 +22,7 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-class Stack {
+class alignas(Internal::CacheLineSize) TreiberStack {
   // --- Data members
   using Node = Internal::StackNode<T>;
   using Allocator = Internal::NodeAllocator<Node>;
@@ -34,18 +34,18 @@ class Stack {
   /**
    * Default construct a Treiber stack
    */
-  Stack() = default;
+  TreiberStack() = default;
 
   /**
    * Free all memory associated with the stack
    */
-  ~Stack();
+  ~TreiberStack();
 
   // Prevent copy and move operations
-  Stack(const Stack&) = delete;
-  Stack(Stack&&) = delete;
-  Stack& operator=(const Stack&) = delete;
-  Stack& operator=(Stack&&) = delete;
+  TreiberStack(const TreiberStack&) = delete;
+  TreiberStack(TreiberStack&&) = delete;
+  TreiberStack& operator=(const TreiberStack&) = delete;
+  TreiberStack& operator=(TreiberStack&&) = delete;
 
   // --- Member functions
 
@@ -73,7 +73,7 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-Stack<T>::~Stack() {
+TreiberStack<T>::~TreiberStack() {
   Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {
@@ -90,7 +90,7 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-void Stack<T>::push(T data) {
+void TreiberStack<T>::push(T data) {
   // Grab raw, recycled node memory from the block allocator (may very rarely
   // perform a heap allocation which is not lock-free)
   Node* newNode{Allocator::allocate()};
@@ -108,7 +108,7 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-std::optional<T> Stack<T>::pop() {
+std::optional<T> TreiberStack<T>::pop() {
   // Pointer to node on top of the stack
   Node* popNode{nullptr};
 
@@ -151,7 +151,7 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-bool Stack<T>::empty() const noexcept {
+bool TreiberStack<T>::empty() const noexcept {
   return head_.load(MemoryOrder::relaxed) == nullptr;
 }
 

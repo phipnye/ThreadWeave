@@ -8,48 +8,61 @@ set(SANITIZER_FLAGS
 
 # --- Chase-Lev Deque Tests
 
-add_executable(dequeTests DequeTest.cpp)
+add_executable(ChaseLevDequeTests ChaseLevDequeTests.cpp)
 
 # No TSan because of atomic thread fences
-target_compile_options(dequeTests PRIVATE
+target_compile_options(ChaseLevDequeTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-target_link_options(dequeTests PRIVATE
+target_link_options(ChaseLevDequeTests PRIVATE
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
 )
-target_link_libraries(dequeTests PRIVATE ThreadWeave GTest::gtest_main)
-gtest_discover_tests(dequeTests)
+target_link_libraries(ChaseLevDequeTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(ChaseLevDequeTests)
 
 # --- Treiber Stack Tests
 
-add_executable(stackTests StackTest.cpp)
-target_compile_options(stackTests PRIVATE
+add_executable(TreiberStackTests TreiberStackTests.cpp)
+target_compile_options(TreiberStackTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-target_link_options(stackTests PRIVATE
+target_link_options(TreiberStackTests PRIVATE
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
 )
-target_link_libraries(stackTests PRIVATE ThreadWeave GTest::gtest_main)
-gtest_discover_tests(stackTests)
+target_link_libraries(TreiberStackTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(TreiberStackTests)
 
 # ---- Michael Scott Queue Tests
 
-add_executable(queueTests QueueTest.cpp)
-target_compile_options(queueTests PRIVATE
+add_executable(MichaelScottQueueTests MichaelScottQueueTests.cpp)
+target_compile_options(MichaelScottQueueTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-target_link_options(queueTests PRIVATE
+target_link_options(MichaelScottQueueTests PRIVATE
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
 )
-target_link_libraries(queueTests PRIVATE ThreadWeave GTest::gtest_main)
-gtest_discover_tests(queueTests)
+target_link_libraries(MichaelScottQueueTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(MichaelScottQueueTests)
+
+# --- Vyukov Queue Tests
+
+add_executable(VyukovQueueTests VyukovQueueTests.cpp)
+target_compile_options(VyukovQueueTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_options(VyukovQueueTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_libraries(VyukovQueueTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(VyukovQueueTests)
 
 # ---- Thread Pool Tests
 
-add_executable(threadPoolTests ThreadPoolTest.cpp)
+add_executable(threadPoolTests ThreadPoolTests.cpp)
 target_compile_options(threadPoolTests PRIVATE
         ${COMPILER_FLAGS}
         "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"

@@ -1,5 +1,5 @@
-#ifndef TW_QUEUE_H
-#define TW_QUEUE_H
+#ifndef TW_MICHAEL_SCOTT_QUEUE_H
+#define TW_MICHAEL_SCOTT_QUEUE_H
 
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
@@ -15,13 +15,14 @@
 namespace ThreadWeave {
 
 /**
- * An implementation of a lock-free (Michael-Scott) queue data structure
+ * An implementation of a lock-free (Michael-Scott) queue data structure. This
+ * queue supports multiple consumers, multiplie producers semantics.
  * @tparam T type of the object to store in the queue
  */
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-class Queue {
+class MichaelScottQueue {
   // --- Data members
   using Node = Internal::QueueNode<std::optional<T>>;
   using Allocator = Internal::NodeAllocator<Node>;
@@ -34,18 +35,18 @@ class Queue {
   /**
    * Default construct a Michael-Scott queue
    */
-  Queue();
+  MichaelScottQueue();
 
   /**
    * Free memory associated with the underlying linked list
    */
-  ~Queue() noexcept;
+  ~MichaelScottQueue() noexcept;
 
   // Prevent copy and move operations
-  Queue(const Queue&) = delete;
-  Queue(Queue&&) = delete;
-  Queue& operator=(const Queue&) = delete;
-  Queue& operator=(Queue&&) = delete;
+  MichaelScottQueue(const MichaelScottQueue&) = delete;
+  MichaelScottQueue(MichaelScottQueue&&) = delete;
+  MichaelScottQueue& operator=(const MichaelScottQueue&) = delete;
+  MichaelScottQueue& operator=(MichaelScottQueue&&) = delete;
 
   // --- Member functions
 
@@ -71,12 +72,9 @@ class Queue {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-Queue<T>::Queue() {
+MichaelScottQueue<T>::MichaelScottQueue() {
   // Acquire a raw node block for the initial dummy node
   Node* dummy{Allocator::allocate()};
-
-  // Explicitly initialize the dummy's data members
-  dummy->data = std::nullopt;
 
   // Point both head and tail to the dummy
   head_.store(dummy, MemoryOrder::relaxed);
@@ -86,7 +84,7 @@ Queue<T>::Queue() {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-Queue<T>::~Queue() noexcept {
+MichaelScottQueue<T>::~MichaelScottQueue() noexcept {
   Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {
@@ -99,7 +97,7 @@ Queue<T>::~Queue() noexcept {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-void Queue<T>::push(T data) {
+void MichaelScottQueue<T>::push(T data) {
   // Construct new node to store data
   Node* pushNode{Allocator::allocate()};
   pushNode->data = std::move(data);
@@ -136,7 +134,7 @@ void Queue<T>::push(T data) {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-std::optional<T> Queue<T>::pop() {
+std::optional<T> MichaelScottQueue<T>::pop() {
   // Pointer to the popped node
   Node* oldDummy{nullptr};
 
@@ -194,7 +192,7 @@ std::optional<T> Queue<T>::pop() {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-bool Queue<T>::empty() const {
+bool MichaelScottQueue<T>::empty() const {
   const Internal::HazardGuard<Internal::HazardSlot::Queue0> headGuard{};
   Node* headPtr{headGuard.acquirePointerWithHazard(head_)};
   return headPtr->next.load(MemoryOrder::relaxed) == nullptr;
