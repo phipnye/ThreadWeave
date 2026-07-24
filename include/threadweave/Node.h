@@ -120,7 +120,7 @@ struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   std::exception_ptr exception{nullptr};
   alignas(ResultT) std::byte resultBuffer[sizeof(ResultT)];
   AllocatorInfo<FutureNode> _internal{};
-  std::atomic<Status> state{Status::pending};
+  std::atomic<FutureStatus> state{FutureStatus::pending};
   bool hasResult{false};
 
   // Dtor
@@ -134,18 +134,18 @@ struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   // Wait for the task to finish running
   void wait() noexcept {
     // Early-return if task already complete
-    if (state.load(MemoryOrder::acquire) == Status::ready) {
+    if (state.load(MemoryOrder::acquire) == FutureStatus::ready) {
       return;
     }
 
     // Try transitioning from waiting to running
-    auto expected{Status::pending};
-    state.compare_exchange_strong(expected, Status::waiting,
+    auto expected{FutureStatus::pending};
+    state.compare_exchange_strong(expected, FutureStatus::waiting,
                                   MemoryOrder::release, MemoryOrder::relaxed);
 
     // Wait until the task is ready (no longer waiting)
-    while (state.load(MemoryOrder::acquire) != Status::ready) {
-      state.wait(Status::waiting, MemoryOrder::relaxed);
+    while (state.load(MemoryOrder::acquire) != FutureStatus::ready) {
+      state.wait(FutureStatus::waiting, MemoryOrder::relaxed);
     }
   }
 
@@ -153,9 +153,9 @@ struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   void notify() noexcept {
     // Update to ready and notify waiting entities if it was originally in a
     // waiting state
-    if (const Status oldState{
-            state.exchange(Status::ready, MemoryOrder::release)};
-        oldState == Status::waiting) {
+    if (const FutureStatus oldState{
+            state.exchange(FutureStatus::ready, MemoryOrder::release)};
+        oldState == FutureStatus::waiting) {
       state.notify_one();
     }
   }
@@ -168,7 +168,7 @@ struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
     exception = nullptr;
     execute = nullptr;
     refCount.store(2, MemoryOrder::relaxed);
-    state.store(Status::pending, MemoryOrder::relaxed);
+    state.store(FutureStatus::pending, MemoryOrder::relaxed);
 
 #ifndef NDEBUG
     std::memset(payload, 0, sizeof(payload));

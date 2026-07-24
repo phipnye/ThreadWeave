@@ -52,6 +52,12 @@ class VyukovQueue {
    * @return data from the front of the queue or std::nullopt if queue is empty
    */
   std::optional<T> pop() noexcept;
+
+  // /**
+  //  * Check if the queue is empty.
+  //  * @return true if the queue is empty and false otherwise
+  //  */
+  // bool empty() const;
 };
 
 template <typename T>
@@ -105,6 +111,13 @@ std::optional<T> VyukovQueue<T>::pop() noexcept {
   // Empty queue
   return std::nullopt;
 }
+
+// template <typename T>
+//   requires(std::is_nothrow_default_constructible_v<T> &&
+//            std::is_nothrow_move_constructible_v<T>)
+// bool VyukovQueue<T>::empty() const {
+//   return head_ == tail_.load(MemoryOrder::relaxed);
+// }
 
 }  // namespace ThreadWeave
 

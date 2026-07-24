@@ -14,6 +14,7 @@ namespace Internal {
 // Alignment to prevent false sharing
 #ifdef TW_CACHE_LINE_SIZE
 static_assert(TW_CACHE_LINE_SIZE > 0, "Cache line size should be positive");
+// ReSharper disable once CppCompileTimeConstantCanBeReplacedWithBooleanConstant
 static_assert(!(TW_CACHE_LINE_SIZE & (TW_CACHE_LINE_SIZE - 1)),
               "Cache line size should be a power of 2");
 inline constexpr Index CacheLineSize{TW_CACHE_LINE_SIZE};

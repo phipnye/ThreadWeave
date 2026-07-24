@@ -3,17 +3,19 @@
 
 #include <threadweave/ChaseLevDeque.h>
 #include <threadweave/Future.h>
-#include <threadweave/VyukovQueue.h>
 #include <threadweave/NodeAllocator.h>
+#include <threadweave/VyukovQueue.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <new>
-#include <semaphore>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -22,13 +24,20 @@
 namespace ThreadWeave {
 
 /**
- * An implementation of a thread pool class built upon lock-free Michael-Scott
- * queues of tasks for non-worker threads to submit to and thread-specific
- * Chase-Lev Deques with the capability for threads to steal tasks from one
- * another.
+ * An implementation of a thread pool class built upon Vyukov MPSC queues of
+ * tasks for non-worker threads to submit to and thread-specific Chase-Lev
+ * Deques with the capability for threads to steal tasks from one another.
  */
 class ThreadPool {
-  using NodeBase = Internal::FutureNodeBase;
+  enum class ThreadStatus : std::int8_t { active, yielded, finished };
+  using FutureNodeBase = Internal::FutureNodeBase;
+
+  // Helper struct of padded atomic counters to prevent false sharing
+  struct alignas(Internal::CacheLineSize) ParkDetails {
+    // Value only ever gets incremented and the raw value doesn't matter
+    std::atomic<Index> value{std::numeric_limits<Index>::min()};
+    std::atomic<bool> parked{false};
+  };
 
   // Thread-local information that keeps track of whether the thread submitting
   // a task is a worker in which case it can write directly to its own work
@@ -37,14 +46,14 @@ class ThreadPool {
   static thread_local inline Index workerId{-1};
 
   // --- Data members
-  std::unique_ptr<ChaseLevDeque<NodeBase*>[]> threadDeques_;
-  std::unique_ptr<VyukovQueue<NodeBase*>[]> externalQueues_;
-  std::vector<std::jthread> workers_;
+  std::unique_ptr<ChaseLevDeque<FutureNodeBase*>[]> internalDeques_;
+  std::unique_ptr<VyukovQueue<FutureNodeBase*>[]> externalQueues_;
+  std::vector<std::thread> workers_;
   const Index nThreads_;
-  std::atomic<Index> nPendingTasks_;
-  std::atomic<Index> externalId_;
-  std::counting_semaphore<> taskSignal_;
-  std::atomic<bool> stop_;
+  std::vector<ParkDetails> parkDetails_;
+  alignas(Internal::CacheLineSize) std::atomic<Index> nFinished_;
+  alignas(Internal::CacheLineSize) std::atomic<Index> externalId_;
+  alignas(Internal::CacheLineSize) std::atomic<bool> stop_;
 
  public:
   // --- Ctors, Assignment, and Dtor
@@ -90,6 +99,33 @@ class ThreadPool {
    * index of its resources like its Chase-Lev deque
    */
   void workerLoop(Index threadId);
+
+  /**
+   * Try to awake a thread
+   * @param threadId the index/id of the thread to try to awaken
+   */
+  void tryUnparkThread(Index threadId) noexcept;
+
+  /**
+   * Put a thread to sleep
+   * @param threadId the index/id of the thread to put to sleep
+   * @param observedCnt
+   */
+  void parkThread(Index threadId, Index observedCnt) noexcept;
+
+  /**
+   * Activate a thread marking its status as active and reincrementing the
+   * number of active threads if it was previously marked as done
+   * @param status a reference to the prior status
+   */
+  void markActiveThread(ThreadStatus& status) noexcept;
+
+  /**
+   * Mark a thread as finished and decrement the number of active threads if it
+   * was previously not finished
+   * @param status  a reference to the prior status
+   */
+  void markFinishedThread(ThreadStatus& status) noexcept;
 };
 
 template <typename F, typename... Args>
@@ -98,6 +134,9 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   using ReturnType = std::invoke_result_t<F, Args...>;
   using Node = Internal::FutureNode<ReturnType>;
   using Allocator = Internal::NodeAllocator<Node>;
+  static_assert(!std::is_reference_v<ReturnType>,
+                "Reference return types are not supported directly. Return a "
+                "pointer or std::reference_wrapper instead.");
 
   // Package the functions and arguments into a lambda
   auto boundTask{
@@ -112,20 +151,24 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   static_assert(
       sizeof(BoundTask) <= Node::payloadSize,
       "Task arguments exceed the FutureNode's internal buffer limit. "
-      "Considering reducing the size of passed arguments or define the macro "
+      "Consider reducing the size of passed arguments or define the macro "
       "TW_PAYLOAD_SIZE to increase the size of the internal buffer.");
   static_assert(alignof(BoundTask) <= alignof(std::max_align_t),
                 "Task's captured state requires stricter alignment than the "
                 "FutureNode payload buffer guarantees.");
 
-  // Retrive an allocation for a node
-  Node* taskNode{Allocator::allocate()};
+  // Retrive an allocation for a node (note deallocation is taken care of by the
+  // future's destructor or the lambda where release() is called)
+  Node* const taskNode{Allocator::allocate()};
 
   // Construct the callable object directly inside the node's byte payload
+  static_assert(
+      std::is_nothrow_move_constructible_v<BoundTask>,
+      "BoundTask's move constructor may throw and cause a memory leak");
   ::new (static_cast<void*>(taskNode->payload)) BoundTask{std::move(boundTask)};
 
   // Bind the execution layout
-  taskNode->execute = [](NodeBase* base) {
+  taskNode->execute = [](FutureNodeBase* base) {
     // Re-cast back to a node pointer
     Node* self{static_cast<Node*>(base)};
 
@@ -172,22 +215,33 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     }
   };
 
-  // push synchronizes with pop and hence relaxed memory ordering suffices here
-  nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
-
   // If thread submitting task is a worker, push the task directly to its own
   // work deque
   if (currentPool == this) {
-    threadDeques_[workerId].push(taskNode);
+    assert(workerId >= 0 && workerId < nThreads_ && "Out of bounds threadId");
+    internalDeques_[workerId].push(taskNode);
+
+    // Try unparking another thread to promote work stealing (for 1 thread
+    // pools, this does needless work but it's expected to be rare)
+    tryUnparkThread((workerId + 1) % nThreads_);
   } else {
     // Otherwise, use a round-robin approach to push a task to a thread's
-    // michael-scott queue which supports MPMC semantics but requires the worker
+    // Vyukov queue which supports MPSC semantics but requires the worker
     // to transfer the tasks for them to be stolen
     const Index idx{externalId_.fetch_add(1, MemoryOrder::relaxed) % nThreads_};
+    assert(idx >= 0 && idx < nThreads_ && "Out of bounds threadId");
     externalQueues_[idx].push(taskNode);
+
+    // Awake the corresponding thread if it's waiting, it must be this thread
+    // as the sole consumer of the work queue (release ensures other threads see
+    // pushed task preventing a dangerous wake up where a thread awakes too
+    // early, looks in its external queue finds nothing, and goes back to sleep
+    // before the task arrives at which point a call to get() could block
+    // indefinitely waiting on a value no thread except the sleeping thread can
+    // touch
+    tryUnparkThread(idx);
   }
 
-  taskSignal_.release();
   return Future<ReturnType>{taskNode};
 }
 

@@ -8,7 +8,7 @@
 namespace ThreadWeave::Internal {
 
 // Enum indicating the status a future
-enum class Status : std::int8_t { pending, ready, waiting };
+enum class FutureStatus : std::int8_t { pending, ready, waiting };
 
 // Enum tracking the index of a hazard slot
 enum class HazardSlot : Index {

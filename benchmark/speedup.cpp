@@ -18,7 +18,7 @@ using ThreadWeave::Index;
 
 // --- Global parameters
 
-constexpr Index BaseIter{1'000'000};
+constexpr Index BaseIter{10'000'000};
 constexpr Index NumThreadArgs[]{2, 4, 8, 12};
 constexpr Index NumTaskArgs[]{100, 1'000, 10'000};
 
@@ -41,7 +41,7 @@ static Index busyWork(const Index nIter) {
     benchmark::DoNotOptimize(sum);
   }
 
-  return 0;
+  return sum / nIter;  // prevent overflow
 }
 
 // Generate a series of imbalanced workloads

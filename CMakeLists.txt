@@ -46,8 +46,11 @@ target_sources(ThreadWeave
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 
+# Define cache line size instead of relying on std::hardware_destructive_interference_size
+target_compile_definitions(ThreadWeave PUBLIC TW_CACHE_LINE_SIZE=64)
+
 # Makes every atomic operation sequentially consistent
-#target_compile_definitions(ThreadWeave PRIVATE TW_DEBUG_SEQ_CST)
+#target_compile_definitions(ThreadWeave PUBLIC TW_DEBUG_SEQ_CST)
 
 # --- Third-party dependencies
 

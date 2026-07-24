@@ -3,27 +3,50 @@
 #include <threadweave/utils.h>
 
 #include <atomic>
-#include <chrono>
-#include <future>
+#include <cassert>
+#include <iostream>
 #include <memory>
 #include <vector>
 
 namespace ThreadWeave {
 
 ThreadPool::ThreadPool(const Index nThreads)
-    : threadDeques_{std::make_unique<ChaseLevDeque<NodeBase*>[]>(nThreads)},
-      externalQueues_{std::make_unique<VyukovQueue<NodeBase*>[]>(nThreads)},
+    : internalDeques_{
+          std::make_unique<ChaseLevDeque<FutureNodeBase*>[]>(nThreads)},
+      externalQueues_{
+          std::make_unique<VyukovQueue<FutureNodeBase*>[]>(nThreads)},
       workers_{},
       nThreads_{nThreads},
-      nPendingTasks_{0},
+      parkDetails_(nThreads),
+      nFinished_{0},
       externalId_{0},
-      taskSignal_{0},
       stop_{false} {
   // Fill pool with worker threads
   workers_.reserve(nThreads);
 
-  for (Index threadId{0}; threadId < nThreads; ++threadId) {
-    workers_.emplace_back(&ThreadPool::workerLoop, this, threadId);
+  try {
+    for (Index threadId{0}; threadId < nThreads; ++threadId) {
+      workers_.emplace_back(&ThreadPool::workerLoop, this, threadId);
+    }
+  } catch (...) {
+    // In case spawning a thread throws, clean up right away
+    stop_.store(true, MemoryOrder::release);
+
+    // Account for workers that were never spawned so created workers can break
+    const Index sz{static_cast<Index>(workers_.size())};
+    nFinished_.fetch_add(nThreads_ - sz, MemoryOrder::release);
+
+    for (Index threadId{0}; threadId < sz; ++threadId) {
+      tryUnparkThread(threadId);
+    }
+
+    for (auto& t : workers_) {
+      if (t.joinable()) {
+        t.join();
+      }
+    }
+
+    throw;
   }
 }
 
@@ -31,11 +54,15 @@ ThreadPool::~ThreadPool() {
   // Indicate to the threads to stop
   stop_.store(true, MemoryOrder::release);
 
-  // Wake every worker that's currently blocked on the semaphore
-  taskSignal_.release(nThreads_);
+  // Awaken every thread
+  for (Index threadId{0}; threadId < nThreads_; ++threadId) {
+    tryUnparkThread(threadId);
+  }
 
   // Join all of the workers
-  workers_.clear();
+  for (auto& t : workers_) {
+    t.join();
+  }
 }
 
 void ThreadPool::workerLoop(const Index threadId) {
@@ -45,74 +72,126 @@ void ThreadPool::workerLoop(const Index threadId) {
   currentPool = this;
   workerId = threadId;
 
-  // Index to try to steal from (will start with the 'next' thread)
-  Index stealId{threadId};
+  // State to track thread's current status to coordinate the thread's
+  // waiting, yielding, and finishing control flow
+  auto status{ThreadStatus::active};
 
   while (true) {
+    // Store the observed count at the beginning of the worker loop, this allows
+    // us to try to park the current thread if the observed count remains the
+    // same indicating no other thread incremented the count and is trying to
+    // awake this thread
+    const Index observedCnt{
+        status == ThreadStatus::yielded
+            ? parkDetails_[threadId].value.load(MemoryOrder::acquire)
+            : 0};
+
     // Drain tasks from the thread's queue for tasks submitted by non-workers
-    // (we drain up to nThreads at a time to promote task stealing since other
-    // threads cannot steal from the thread's personal queue while also
-    // preventing continually popping where no tasks get done)
-    for (Index _{0}; _ < nThreads_; ++_) {
-      if (auto taskNode{externalQueues_[threadId].pop()}) {
-        threadDeques_[threadId].push(*taskNode);
-      } else {
-        break;  // no more tasks
+    // so other threads can steal this work
+    for (Index i{1}, nUnawoken{nThreads_ - 1};; ++i) {
+      std::optional task{externalQueues_[threadId].pop()};
+
+      // No more new tasks
+      if (!task) {
+        break;
+      }
+
+      internalDeques_[threadId].push(*task);
+
+      // Only try to awake threads we haven't already awoken
+      if (nUnawoken) {
+        --nUnawoken;
+        const Index awakeIdx{(threadId + i) % nThreads_};
+        tryUnparkThread(awakeIdx);
       }
     }
 
     // Try taking a task from our current thread's work queue first
-    if (auto taskNode{threadDeques_[threadId].pop()}) {
-      // Popped task is a future node, cast to base class pointer and call
-      // execute function pointer data member which casts the void* node to the
-      // correct templated node pointer
-      NodeBase* const baseNode{*taskNode};
-      baseNode->execute(baseNode);
-      nPendingTasks_.fetch_sub(1, MemoryOrder::release);
+    if (std::optional task{internalDeques_[threadId].pop()}) {
+      markActiveThread(status);
+      FutureNodeBase* const base{*task};
+      base->execute(base);
       continue;
     }
 
     // Try stealing a task from the other threads
     bool stoleTask{false};
 
-    for (Index _{0}; _ < nThreads_; ++_) {
+    for (Index i{1}; i < nThreads_; ++i) {
       // Index of thread to try to steal from
-      ++stealId;
-      stealId %= nThreads_;
-
-      // Skip current thread
-      if (stealId == threadId) {
-        continue;
-      }
+      const Index stealId{(threadId + i) % nThreads_};
 
       // Successful stealing of a task
-      if (auto taskNode{threadDeques_[stealId].steal()}) {
-        NodeBase* const baseNode{*taskNode};
-        baseNode->execute(baseNode);
+      if (std::optional task{internalDeques_[stealId].steal()}) {
+        markActiveThread(status);
+        FutureNodeBase* const base{*task};
+        base->execute(base);
         stoleTask = true;
-        nPendingTasks_.fetch_sub(1, MemoryOrder::release);
         break;
       }
     }
 
-    if (stoleTask) {
-      continue;
-    }
+    if (!stoleTask) {
+      // Destructor called and we should break if every thread is done
+      if (stop_.load(MemoryOrder::acquire)) [[unlikely]] {
+        markFinishedThread(status);
 
-    // Destructor set stop and there are no remaining tasks. Note that it is not
-    // possible for a thread to take the last task and then other threads to
-    // terminate before the last task is done due to the ordering constraints of
-    // execution before decrementing. This is done purposefully to protect
-    // against the last task submitting additional tasks and then the last
-    // thread performing those tasks sequentially.
-    if (stop_.load(MemoryOrder::acquire) &&
-        nPendingTasks_.load(MemoryOrder::acquire) == 0) {
-      break;
-    }
+        // No more active threads, all tasks are done, go ahead and break
+        if (nFinished_.load(MemoryOrder::acquire) == nThreads_) {
+          break;
+        }
 
-    // Block until a submit() signals new work, or until the timeout expires
-    taskSignal_.try_acquire_for(std::chrono::milliseconds{1});
+        std::this_thread::yield();
+      } else {
+        // We yield first and then perform another pass before parking the
+        // thread
+        if (status != ThreadStatus::yielded) {
+          status = ThreadStatus::yielded;
+          std::this_thread::yield();
+        } else {
+          parkThread(threadId, observedCnt);
+          status = ThreadStatus::active;
+        }
+      }
+    }
   }
+}
+
+void ThreadPool::tryUnparkThread(const Index threadId) noexcept {
+  assert(threadId >= 0 && threadId < nThreads_ && "Out of bounds threadId");
+  parkDetails_[threadId].value.fetch_add(1, MemoryOrder::release);
+
+  // Only pay for notify_one()'s syscall if the thread is actually parked (more
+  // expensive than the additional store load acquired)
+  if (parkDetails_[threadId].parked.exchange(false, MemoryOrder::acquire)) {
+    parkDetails_[threadId].value.notify_one();
+  }
+}
+
+void ThreadPool::parkThread(const Index threadId,
+                            const Index observedCnt) noexcept {
+  assert(threadId >= 0 && threadId < nThreads_ && "Out of bounds threadId");
+  parkDetails_[threadId].parked.store(true, MemoryOrder::release);
+  parkDetails_[threadId].value.wait(observedCnt, MemoryOrder::acquire);
+  parkDetails_[threadId].parked.store(false, MemoryOrder::release);
+}
+
+void ThreadPool::markActiveThread(ThreadStatus& status) noexcept {
+  // Current thread previously was finished but found a task, re-increment
+  // the number of active threads
+  if (status == ThreadStatus::finished) [[unlikely]] {
+    nFinished_.fetch_sub(1, MemoryOrder::release);
+  }
+
+  status = ThreadStatus::active;
+}
+
+void ThreadPool::markFinishedThread(ThreadStatus& status) noexcept {
+  if (status != ThreadStatus::finished) {
+    nFinished_.fetch_add(1, MemoryOrder::release);
+  }
+
+  status = ThreadStatus::finished;
 }
 
 }  // namespace ThreadWeave
