@@ -45,6 +45,10 @@ class ThreadPool {
   static constexpr std::uint64_t kTaskShift{1ULL};
   static constexpr std::uint64_t kTaskUnit{1ULL << kTaskShift};
 
+  // Maximum number of tasks a worker can drain from the injection queue at a
+  // time
+  static constexpr Index kMaxDrain{16};
+
   // --- Data members
 
   // Worker-specific deques that other workers can steal from
@@ -159,20 +163,13 @@ class ThreadPool {
 
    public:
     // Ctor tries to acquire key
-    explicit KeyGuard(std::atomic_flag& key)
-        : key_{key}, keyAcquired_{!key.test_and_set(MemoryOrder::acquire)} {}
+    explicit KeyGuard(std::atomic_flag& key);
 
     // Dtor releases key if acquired
-    ~KeyGuard() {
-      if (keyAcquired_) {
-        key_.clear(MemoryOrder::release);
-      }
-    }
+    ~KeyGuard();
 
     // Determine if the guard holds the key
-    bool holdsKey() const noexcept {
-      return keyAcquired_;
-    }
+    bool holdsKey() const noexcept;
   };
 };
 
@@ -265,7 +262,13 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     }
   };
 
-  // Increment both task counters
+  // Increment both task counters (note sequential consistency synchronizes with
+  // worker loop and prevents store-load reordering that could cause a
+  // lost wakeup and indefinite parking
+  // Submit:       1) Marks task queued   -> 2) Checks if worker asleep
+  // WorkerLoop(): 1) Marks worker parked -> 2) Checks if task is queued
+  // With weaker memory orderings, both threads could see old memory at
+  // step 2 and if both read 0, we get deadlock
   nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
   incrementNumQueued(MemoryOrder::seq_cst);
 

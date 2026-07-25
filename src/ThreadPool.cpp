@@ -32,7 +32,7 @@ ThreadPool::ThreadPool(const Index nThreads)
     }
   } catch (...) {
     // In case spawning a thread throws, clean up right away
-    setStop(MemoryOrder::relaxed);
+    setStop(MemoryOrder::release);
     state_.notify_all();
 
     for (auto& t : workers_) {
@@ -47,7 +47,7 @@ ThreadPool::ThreadPool(const Index nThreads)
 
 ThreadPool::~ThreadPool() {
   // Indicate to the threads to stop
-  setStop(MemoryOrder::relaxed);
+  setStop(MemoryOrder::release);
   state_.notify_all();
 
   // Join all of the workers
@@ -73,7 +73,7 @@ void ThreadPool::workerLoop(const Index threadId) {
     if (const KeyGuard keyGuard{injectionKey_}; keyGuard.holdsKey()) {
       // Limit the amount a worker can drain at a time to minimize deque
       // allocations and encourage task sharing among deques
-      for (Index _{0}; _ < 32; ++_) {
+      for (Index _{0}; _ < kMaxDrain; ++_) {
         if (const std::optional task{injectionQueue_.pop()}) {
           workerDeques_[threadId].push(*task);
         } else {
@@ -114,7 +114,8 @@ void ThreadPool::workerLoop(const Index threadId) {
       continue;
     }
 
-    // Review current state of pool
+    // Review current state of pool (relaxed is sufficient for this reading any
+    // decision to actually sleep is guarded by the secondary seq_cst check)
     const auto [_, nQueuedTasks, stop]{getState(MemoryOrder::relaxed)};
 
     // Destructor called and we should break if no tasks remain
@@ -132,7 +133,8 @@ void ThreadPool::workerLoop(const Index threadId) {
       }
 
       // If there are non-executing tasks remaining, we loop and try again for
-      // tasks, otherwise, we park
+      // tasks, otherwise, we park until workers executing tasks indicate an
+      // update
       if (nQueuedTasks == 0) {
         // Listen for remaining tasks to either finish (notification happens in
         // executeTask() in which case we will try to terminate next loop) or
@@ -144,8 +146,13 @@ void ThreadPool::workerLoop(const Index threadId) {
     // Thread just tried to find a task but found nothing, yield if still no
     // queued tasks
     if (nQueuedTasks == 0 && !stop) {
-      // Announce intention to park
-      // TODO: Review sequential consistency requirement
+      // Announce intention to park (note sequential consistency synchronizes
+      // with submit() and prevents store-load reordering that could cause a
+      // lost wakeup and indefinite parking
+      // Submit:       1) Marks task queued   -> 2) Checks if worker asleep
+      // WorkerLoop(): 1) Marks worker parked -> 2) Checks if task is queued
+      // With weaker memory orderings, both threads could see old memory at
+      // step 2 and if both read 0, we get deadlock
       nParkedWorkers_.fetch_add(1, MemoryOrder::seq_cst);
 
       // Re-read state AFTER incrementing parked counter to catch races
@@ -157,6 +164,9 @@ void ThreadPool::workerLoop(const Index threadId) {
         state_.wait(expectedState, MemoryOrder::relaxed);
       }
 
+      // Indicate thread is no longer parked (relaxed semantics sufficient since
+      // worst case, a concurrent submit() sees nParkedWorkers_ > 0 and sends an
+      // unnecessary notify_one())
       nParkedWorkers_.fetch_sub(1, MemoryOrder::relaxed);
     }
   }
@@ -173,7 +183,9 @@ void ThreadPool::executeTask(FutureNodeBase* const task) {
   // happens before acquire load ensuring no tasks being executed can submit new
   // tasks)
   if (nPendingTasks_.fetch_sub(1, MemoryOrder::release) == 1) {
-    const auto [_1, _2, stop]{getState(MemoryOrder::relaxed)};
+    // Acquire synchronizes with release in dtor preventing case where stop is
+    // an "old" value and thus a missed notify_all results in deadlock
+    const auto [_1, _2, stop]{getState(MemoryOrder::acquire)};
 
     // After we have executed the last task and this was the last task in the
     // queue, we need to unpark all workers parked on the number of pending task
@@ -201,6 +213,19 @@ void ThreadPool::incrementNumQueued(const std::memory_order order) noexcept {
 
 void ThreadPool::decrementNumQueued(const std::memory_order order) noexcept {
   state_.fetch_sub(kTaskUnit, order);
+}
+
+ThreadPool::KeyGuard::KeyGuard(std::atomic_flag& key)
+    : key_{key}, keyAcquired_{!key.test_and_set(MemoryOrder::acquire)} {}
+
+ThreadPool::KeyGuard::~KeyGuard() {
+  if (keyAcquired_) {
+    key_.clear(MemoryOrder::release);
+  }
+}
+
+bool ThreadPool::KeyGuard::holdsKey() const noexcept {
+  return keyAcquired_;
 }
 
 }  // namespace ThreadWeave
