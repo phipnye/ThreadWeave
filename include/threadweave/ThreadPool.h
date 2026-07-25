@@ -13,7 +13,6 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <new>
 #include <thread>
@@ -29,15 +28,10 @@ namespace ThreadWeave {
  * Deques with the capability for threads to steal tasks from one another.
  */
 class ThreadPool {
-  enum class ThreadStatus : std::int8_t { active, yielded, finished };
+  // TODO: Must implement strategy to prevent get() from blocking if called
+  // within pool task submission to facilitate recursive task submission/divide
+  // and conquer
   using FutureNodeBase = Internal::FutureNodeBase;
-
-  // Helper struct of padded atomic counters to prevent false sharing
-  struct alignas(Internal::CacheLineSize) ParkDetails {
-    // Value only ever gets incremented and the raw value doesn't matter
-    std::atomic<Index> value{std::numeric_limits<Index>::min()};
-    std::atomic<bool> parked{false};
-  };
 
   // Thread-local information that keeps track of whether the thread submitting
   // a task is a worker in which case it can write directly to its own work
@@ -45,15 +39,32 @@ class ThreadPool {
   static thread_local inline ThreadPool* currentPool{nullptr};
   static thread_local inline Index workerId{-1};
 
+  // Bit tools state manipulation
+  static constexpr std::uint64_t stopMask{1};
+  static constexpr std::uint64_t taskShift{1};
+  static constexpr std::uint64_t taskUnit{1 << taskShift};
+
   // --- Data members
-  std::unique_ptr<ChaseLevDeque<FutureNodeBase*>[]> internalDeques_;
-  std::unique_ptr<VyukovQueue<FutureNodeBase*>[]> externalQueues_;
+
+  // Worker-specific deques that other workers can steal from
+  std::unique_ptr<ChaseLevDeque<FutureNodeBase*>[]> workerDeques_;
+
+  // Global MPSC queue for storing tasks submitted by non-workers
+  VyukovQueue<FutureNodeBase*> injectionQueue_;
+
+  // Threads
   std::vector<std::thread> workers_;
   const Index nThreads_;
-  std::vector<ParkDetails> parkDetails_;
-  alignas(Internal::CacheLineSize) std::atomic<Index> nFinished_;
-  alignas(Internal::CacheLineSize) std::atomic<Index> externalId_;
-  alignas(Internal::CacheLineSize) std::atomic<bool> stop_;
+
+  // State of the pool (LSB stores signal to stop and remaining bits store the
+  // number of queued and non-executing tasks the queue still has)
+  alignas(Internal::CacheLineSize) std::atomic<std::uint64_t> poolState_;
+
+  // Number of tasks (in queue OR executing) the pool still has
+  alignas(Internal::CacheLineSize) std::atomic<Index> nPendingTasks_;
+
+  // Mutual exclusion key for preventing multiple consumers of injection queue
+  alignas(Internal::CacheLineSize) std::atomic_flag injectionKey_;
 
  public:
   // --- Ctors, Assignment, and Dtor
@@ -101,31 +112,11 @@ class ThreadPool {
   void workerLoop(Index threadId);
 
   /**
-   * Try to awake a thread
-   * @param threadId the index/id of the thread to try to awaken
+   * Execute a task stored in a future base node pointer, set its status to
+   * active, and then decrements counters with proper ordering
+   * @param task a pointer to a future base node with a task to execute
    */
-  void tryUnparkThread(Index threadId) noexcept;
-
-  /**
-   * Put a thread to sleep
-   * @param threadId the index/id of the thread to put to sleep
-   * @param observedCnt
-   */
-  void parkThread(Index threadId, Index observedCnt) noexcept;
-
-  /**
-   * Activate a thread marking its status as active and reincrementing the
-   * number of active threads if it was previously marked as done
-   * @param status a reference to the prior status
-   */
-  void markActiveThread(ThreadStatus& status) noexcept;
-
-  /**
-   * Mark a thread as finished and decrement the number of active threads if it
-   * was previously not finished
-   * @param status  a reference to the prior status
-   */
-  void markFinishedThread(ThreadStatus& status) noexcept;
+  void executeTask(FutureNodeBase* task);
 };
 
 template <typename F, typename... Args>
@@ -168,9 +159,9 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   ::new (static_cast<void*>(taskNode->payload)) BoundTask{std::move(boundTask)};
 
   // Bind the execution layout
-  taskNode->execute = [](FutureNodeBase* base) {
+  taskNode->execute = [](FutureNodeBase* const base) {
     // Re-cast back to a node pointer
-    Node* self{static_cast<Node*>(base)};
+    Node* const tskNode{static_cast<Node*>(base)};
 
     // Per the standard, a new object is only "transparently replaceable"
     // (meaning you can keep using the old pointer without UB) if all of the
@@ -186,60 +177,57 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     // aren't replacing a base class subobject of a larger class).
     // Payload is of type std::byte[] and decays to a byte* thus launder is
     // necessary here to prevent violating 2.
-    auto* task{std::launder(reinterpret_cast<BoundTask*>(self->payload))};
+    auto* const bndTask{
+        std::launder(reinterpret_cast<BoundTask*>(tskNode->payload))};
 
     if constexpr (std::is_void_v<ReturnType>) {
       try {
-        (*task)();
+        (*bndTask)();
       } catch (...) {
-        self->exception = std::current_exception();
+        tskNode->exception = std::current_exception();
       }
     } else {
       try {
-        ::new (static_cast<void*>(self->resultBuffer)) ReturnType{(*task)()};
-        self->hasResult = true;  // helps track need to call destructor
+        ::new (static_cast<void*>(tskNode->resultBuffer))
+            ReturnType{(*bndTask)()};
+        tskNode->hasResult = true;  // helps track need to call destructor
       } catch (...) {
-        self->exception = std::current_exception();
+        tskNode->exception = std::current_exception();
       }
     }
 
     // Explicitly clean up the bound lambda and arguments and then notify thread
     // of completion
-    task->~BoundTask();
-    self->notify();
+    bndTask->~BoundTask();
+    tskNode->notify();
 
     // Decrement node's internal refernce count and deallocate node if caller is
     // last one holding a reference
-    if (self->release()) {
-      Allocator::deallocate(self);
+    if (tskNode->release()) {
+      Allocator::deallocate(tskNode);
     }
   };
 
-  // If thread submitting task is a worker, push the task directly to its own
-  // work deque
+  // Increment both counters
+  nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
+  const std::uint64_t prevState{
+      poolState_.fetch_add(taskUnit, MemoryOrder::relaxed)};
+
+  // Wake up sleeping workers waiting on queued work
+  // TODO: Replace with number of parked workers and a notify_one
+  if (const std::uint64_t prevTasks{prevState >> taskShift}; prevTasks == 0) {
+    poolState_.notify_all();
+  }
+
   if (currentPool == this) {
+    // If thread submitting task is a worker, push the task directly to its own
+    // work deque
     assert(workerId >= 0 && workerId < nThreads_ && "Out of bounds threadId");
-    internalDeques_[workerId].push(taskNode);
-
-    // Try unparking another thread to promote work stealing (for 1 thread
-    // pools, this does needless work but it's expected to be rare)
-    tryUnparkThread((workerId + 1) % nThreads_);
+    workerDeques_[workerId].push(taskNode);
   } else {
-    // Otherwise, use a round-robin approach to push a task to a thread's
-    // Vyukov queue which supports MPSC semantics but requires the worker
-    // to transfer the tasks for them to be stolen
-    const Index idx{externalId_.fetch_add(1, MemoryOrder::relaxed) % nThreads_};
-    assert(idx >= 0 && idx < nThreads_ && "Out of bounds threadId");
-    externalQueues_[idx].push(taskNode);
-
-    // Awake the corresponding thread if it's waiting, it must be this thread
-    // as the sole consumer of the work queue (release ensures other threads see
-    // pushed task preventing a dangerous wake up where a thread awakes too
-    // early, looks in its external queue finds nothing, and goes back to sleep
-    // before the task arrives at which point a call to get() could block
-    // indefinitely waiting on a value no thread except the sleeping thread can
-    // touch
-    tryUnparkThread(idx);
+    // Otherwise, push the task to the global injection queue that a worker will
+    // later take and store in its own Chase Lev Deque
+    injectionQueue_.push(taskNode);
   }
 
   return Future<ReturnType>{taskNode};

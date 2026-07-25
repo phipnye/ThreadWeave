@@ -45,17 +45,15 @@ static Index busyWork(const Index nIter) {
 }
 
 // Generate a series of imbalanced workloads
-static std::vector<Index> genUnbalancedWorkloads(const Index nTasks,
-                                                 const Index baseIter,
-                                                 const Index loMult = 1,
-                                                 const Index hiMult = 100) {
+static std::vector<Index> genUnbalancedWorkloads(
+    const Index nTasks, const Index baseIter, const Index pctDeviation = 50) {
   std::mt19937 rng{42};  // NOLINT(*-msc51-cpp)
-  std::uniform_int_distribution<Index> multDist{loMult, hiMult};
+  std::uniform_int_distribution<Index> pctDist{-pctDeviation, pctDeviation};
   std::vector<Index> work{};
   work.reserve(nTasks);
 
   for (Index i{0}; i < nTasks; ++i) {
-    work.push_back(multDist(rng) * baseIter);
+    work.push_back(baseIter + ((baseIter * pctDist(rng)) / 100));
   }
 
   return work;
@@ -125,7 +123,7 @@ static void bsBalancedWorkloadBM(benchmark::State& state) {
 
 // Benchmark ThreadWeave's pool across a range of number of threads and number
 // of unbalanced (unequal amount of work) tasks
-static void twUnBalancedWorkloadBM(benchmark::State& state) {
+static void twUnbalancedWorkloadBM(benchmark::State& state) {
   state.SetLabel("library=ThreadWeave;workload=Unbalanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
@@ -155,7 +153,7 @@ static void twUnBalancedWorkloadBM(benchmark::State& state) {
 
 // Benchmark BS's pool across a range of number of threads and number
 // of unbalanced (unequal amount of work) tasks
-static void bsUnBalancedWorkloadBM(benchmark::State& state) {
+static void bsUnbalancedWorkloadBM(benchmark::State& state) {
   state.SetLabel("library=BS::thread_pool;workload=Unbalanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
@@ -195,12 +193,12 @@ BENCHMARK(bsBalancedWorkloadBM)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(twUnBalancedWorkloadBM)
+BENCHMARK(twUnbalancedWorkloadBM)
     ->Apply(nTasksAndThreadsArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(bsUnBalancedWorkloadBM)
+BENCHMARK(bsUnbalancedWorkloadBM)
     ->Apply(nTasksAndThreadsArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <concepts>
 #include <cstddef>
+#include <exception>
 #include <new>
 #include <type_traits>
 
