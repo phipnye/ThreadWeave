@@ -16,6 +16,7 @@
 #include <memory>
 #include <new>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -40,9 +41,9 @@ class ThreadPool {
   static thread_local inline Index workerId{-1};
 
   // Bit tools state manipulation
-  static constexpr std::uint64_t stopMask{1};
-  static constexpr std::uint64_t taskShift{1};
-  static constexpr std::uint64_t taskUnit{1 << taskShift};
+  static constexpr std::uint64_t stopMask{1ULL};
+  static constexpr std::uint64_t taskShift{1ULL};
+  static constexpr std::uint64_t taskUnit{1ULL << taskShift};
 
   // --- Data members
 
@@ -58,10 +59,13 @@ class ThreadPool {
 
   // State of the pool (LSB stores signal to stop and remaining bits store the
   // number of queued and non-executing tasks the queue still has)
-  alignas(Internal::CacheLineSize) std::atomic<std::uint64_t> poolState_;
+  alignas(Internal::CacheLineSize) std::atomic<std::uint64_t> state_;
 
   // Number of tasks (in queue OR executing) the pool still has
   alignas(Internal::CacheLineSize) std::atomic<Index> nPendingTasks_;
+
+  // Number of workers that are parked
+  alignas(Internal::CacheLineSize) std::atomic<Index> nParkedWorkers_;
 
   // Mutual exclusion key for preventing multiple consumers of injection queue
   alignas(Internal::CacheLineSize) std::atomic_flag injectionKey_;
@@ -117,6 +121,59 @@ class ThreadPool {
    * @param task a pointer to a future base node with a task to execute
    */
   void executeTask(FutureNodeBase* task);
+
+  /**
+   * Helper to retrieve the current state values
+   * @param order Memory ordering to use on the load
+   * @return the current number of non-executing queued tasks and the pool
+   * stop values
+   */
+  std::tuple<std::uint64_t, std::uint64_t, bool> getState(
+      std::memory_order order) const noexcept;
+
+  /**
+   * Helper to set the stop pool state value
+   * @param order Memory ordering to use on the store
+   */
+  void setStop(std::memory_order order) noexcept;
+
+  /**
+   * Helper to increment the number of queued tasks
+   * @param order Memory ordering to use on the store
+   */
+  void incrementNumQueued(std::memory_order order) noexcept;
+
+  /**
+   * Helper to decrement the number of queued tasks
+   * @param order Memory ordering to use on the store
+   */
+  void decrementNumQueued(std::memory_order order) noexcept;
+
+  /**
+   * Helper RAII guard for acquiring and releasing injection key
+   */
+  class KeyGuard {
+    // Data members
+    std::atomic_flag& key_;
+    bool keyAcquired_;
+
+   public:
+    // Ctor tries to acquire key
+    explicit KeyGuard(std::atomic_flag& key)
+        : key_{key}, keyAcquired_{!key.test_and_set(MemoryOrder::acquire)} {}
+
+    // Dtor releases key if acquired
+    ~KeyGuard() {
+      if (keyAcquired_) {
+        key_.clear(MemoryOrder::release);
+      }
+    }
+
+    // Determine if the guard holds the key
+    bool holdsKey() const noexcept {
+      return keyAcquired_;
+    }
+  };
 };
 
 template <typename F, typename... Args>
@@ -208,15 +265,13 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     }
   };
 
-  // Increment both counters
+  // Increment both task counters
   nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
-  const std::uint64_t prevState{
-      poolState_.fetch_add(taskUnit, MemoryOrder::relaxed)};
+  incrementNumQueued(MemoryOrder::seq_cst);
 
-  // Wake up sleeping workers waiting on queued work
-  // TODO: Replace with number of parked workers and a notify_one
-  if (const std::uint64_t prevTasks{prevState >> taskShift}; prevTasks == 0) {
-    poolState_.notify_all();
+  // Wake up parked workers waiting on queued work
+  if (nParkedWorkers_.load(MemoryOrder::seq_cst) > 0) {
+    state_.notify_one();
   }
 
   if (currentPool == this) {

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <memory>
 #include <random>
+#include <tuple>
 #include <vector>
 
 namespace ThreadWeave {
@@ -17,8 +18,9 @@ ThreadPool::ThreadPool(const Index nThreads)
       injectionQueue_{},
       workers_{},
       nThreads_{nThreads},
-      poolState_{0},
+      state_{0},
       nPendingTasks_{0},
+      nParkedWorkers_{0},
       injectionKey_{} {
   // Fill pool with worker threads
   assert(nThreads > 0 && "Number of threads must be positive");
@@ -30,8 +32,8 @@ ThreadPool::ThreadPool(const Index nThreads)
     }
   } catch (...) {
     // In case spawning a thread throws, clean up right away
-    poolState_.fetch_or(stopMask, MemoryOrder::relaxed);
-    poolState_.notify_all();
+    setStop(MemoryOrder::relaxed);
+    state_.notify_all();
 
     for (auto& t : workers_) {
       if (t.joinable()) {
@@ -45,8 +47,8 @@ ThreadPool::ThreadPool(const Index nThreads)
 
 ThreadPool::~ThreadPool() {
   // Indicate to the threads to stop
-  poolState_.fetch_or(stopMask, MemoryOrder::relaxed);
-  poolState_.notify_all();
+  setStop(MemoryOrder::relaxed);
+  state_.notify_all();
 
   // Join all of the workers
   for (auto& t : workers_) {
@@ -68,8 +70,7 @@ void ThreadPool::workerLoop(const Index threadId) {
   while (true) {
     // Drain the global injection (MPSC) queue into this worker's deeque so
     // other threads can steal from it
-    // TODO: Replace with RAII guard
-    if (!injectionKey_.test_and_set(MemoryOrder::relaxed)) {
+    if (const KeyGuard keyGuard{injectionKey_}; keyGuard.holdsKey()) {
       // Limit the amount a worker can drain at a time to minimize deque
       // allocations and encourage task sharing among deques
       for (Index _{0}; _ < 32; ++_) {
@@ -79,8 +80,6 @@ void ThreadPool::workerLoop(const Index threadId) {
           break;
         }
       }
-
-      injectionKey_.clear(MemoryOrder::relaxed);
     }
 
     // Try taking a task from our current thread's work queue first
@@ -89,7 +88,8 @@ void ThreadPool::workerLoop(const Index threadId) {
       continue;
     }
 
-    // Try stealing a task from the other threads
+    // Try stealing a task from the other threads (random start index alleviates
+    // contention)
     bool stoleTask{false};
     const Index victimIdx{idxDist(rng)};
 
@@ -115,44 +115,92 @@ void ThreadPool::workerLoop(const Index threadId) {
     }
 
     // Review current state of pool
-    const std::uint64_t currState{poolState_.load(MemoryOrder::relaxed)};
-    const std::uint64_t nQueuedTasks{currState >> taskShift};
-    const std::uint64_t stop{currState & stopMask};
+    const auto [_, nQueuedTasks, stop]{getState(MemoryOrder::relaxed)};
 
     // Destructor called and we should break if no tasks remain
     if (stop) [[unlikely]] {
+      const Index nPending{nPendingTasks_.load(MemoryOrder::acquire)};
+
       // All tasks are done, go ahead and break (acquire synchronize with
       // release decrements which happen after tasks complete. This ensures
       // workers don't finish before all tasks are done. This ensurement
       // prevents instances where workers terminate except for one thread,
       // that thread performs a task that pushes new tasks and then is stuck
       // performing them sequentially
-      if (nPendingTasks_.load(MemoryOrder::acquire) == 0) {
+      if (nPending == 0) {
         break;
+      }
+
+      // If there are non-executing tasks remaining, we loop and try again for
+      // tasks, otherwise, we park
+      if (nQueuedTasks == 0) {
+        // Listen for remaining tasks to either finish (notification happens in
+        // executeTask() in which case we will try to terminate next loop) or
+        // submit a new task
+        nPendingTasks_.wait(nPending, MemoryOrder::relaxed);
       }
     }
 
     // Thread just tried to find a task but found nothing, yield if still no
     // queued tasks
     if (nQueuedTasks == 0 && !stop) {
-      // currState == 0
-      // TODO: Devise method to wait while stop signaled without burning cycles
-      poolState_.wait(0, MemoryOrder::relaxed);
-    } else {
-      std::this_thread::yield();
+      // Announce intention to park
+      // TODO: Review sequential consistency requirement
+      nParkedWorkers_.fetch_add(1, MemoryOrder::seq_cst);
+
+      // Re-read state AFTER incrementing parked counter to catch races
+      const auto [expectedState, expectedTasks,
+                  expectedStop]{getState(MemoryOrder::seq_cst)};
+
+      if (expectedTasks == 0 && !expectedStop) {
+        // Value hasn't changed, safe to park
+        state_.wait(expectedState, MemoryOrder::relaxed);
+      }
+
+      nParkedWorkers_.fetch_sub(1, MemoryOrder::relaxed);
     }
   }
 }
 
 void ThreadPool::executeTask(FutureNodeBase* const task) {
-  // Decrement queued count before running (allows idle workers to sleep in
-  // wait(0))
-  poolState_.fetch_sub(taskUnit, MemoryOrder::relaxed);
+  // Decrement queued count before execution (allows idle workers to unpark -
+  // relaxed semantics are fine since no data guarantees required)
+  decrementNumQueued(MemoryOrder::relaxed);
   task->execute(task);
 
-  // Decrement total count after running (preserves acquire/release teardown
-  // barrier)
-  nPendingTasks_.fetch_sub(1, MemoryOrder::release);
+  // Decrement total count after execution (allows workers to know when to
+  // terminate worker loop - release semantics must be used to ensure execution
+  // happens before acquire load ensuring no tasks being executed can submit new
+  // tasks)
+  if (nPendingTasks_.fetch_sub(1, MemoryOrder::release) == 1) {
+    const auto [_1, _2, stop]{getState(MemoryOrder::relaxed)};
+
+    // After we have executed the last task and this was the last task in the
+    // queue, we need to unpark all workers parked on the number of pending task
+    if (stop) [[unlikely]] {
+      nPendingTasks_.notify_all();
+    }
+  }
+}
+
+std::tuple<std::uint64_t, std::uint64_t, bool> ThreadPool::getState(
+    const std::memory_order order) const noexcept {
+  const std::uint64_t state{state_.load(order)};
+  const std::uint64_t nQueuedTasks{state >> taskShift};
+  const std::uint64_t stop{state & stopMask};
+  return std::make_tuple(state, nQueuedTasks, static_cast<bool>(stop));
+}
+
+void ThreadPool::setStop(const std::memory_order order) noexcept {
+  state_.fetch_or(stopMask, order);
+}
+
+void ThreadPool::incrementNumQueued(const std::memory_order order) noexcept {
+  state_.fetch_add(taskUnit, order);
+}
+
+void ThreadPool::decrementNumQueued(const std::memory_order order) noexcept {
+  state_.fetch_sub(taskUnit, order);
 }
 
 }  // namespace ThreadWeave

@@ -40,7 +40,7 @@ class MichaelScottQueue {
   /**
    * Free memory associated with the underlying linked list
    */
-  ~MichaelScottQueue() noexcept;
+  ~MichaelScottQueue();
 
   // Prevent copy and move operations
   MichaelScottQueue(const MichaelScottQueue&) = delete;
@@ -84,7 +84,7 @@ MichaelScottQueue<T>::MichaelScottQueue() {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-MichaelScottQueue<T>::~MichaelScottQueue() noexcept {
+MichaelScottQueue<T>::~MichaelScottQueue() {
   Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {

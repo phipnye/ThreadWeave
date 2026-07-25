@@ -33,7 +33,7 @@ class VyukovQueue {
   /**
    * Destruct a VyukovQueue instance
    */
-  ~VyukovQueue() noexcept;
+  ~VyukovQueue();
 
   // Prevent copying and moving
   VyukovQueue(const VyukovQueue&) = delete;
@@ -52,12 +52,6 @@ class VyukovQueue {
    * @return data from the front of the queue or std::nullopt if queue is empty
    */
   std::optional<T> pop() noexcept;
-
-  // /**
-  //  * Check if the queue is empty.
-  //  * @return true if the queue is empty and false otherwise
-  //  */
-  // bool empty() const;
 };
 
 template <typename T>
@@ -73,7 +67,7 @@ VyukovQueue<T>::VyukovQueue() {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
-VyukovQueue<T>::~VyukovQueue() noexcept {
+VyukovQueue<T>::~VyukovQueue() {
   while (head_) {
     Node* const curr{head_};
     head_ = head_->next.load(MemoryOrder::relaxed);
@@ -111,13 +105,6 @@ std::optional<T> VyukovQueue<T>::pop() noexcept {
   // Empty queue
   return std::nullopt;
 }
-
-// template <typename T>
-//   requires(std::is_nothrow_default_constructible_v<T> &&
-//            std::is_nothrow_move_constructible_v<T>)
-// bool VyukovQueue<T>::empty() const {
-//   return head_ == tail_.load(MemoryOrder::relaxed);
-// }
 
 }  // namespace ThreadWeave
 

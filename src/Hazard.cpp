@@ -29,7 +29,7 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{MaxThreads} {
   }
 }
 
-ThreadHazardManager::~ThreadHazardManager() noexcept {
+ThreadHazardManager::~ThreadHazardManager() {
   // Clear the hazard pointers before clearing the ID so other threads can use
   // this thread slot
   auto& [id, ptrs]{slotsPool[poolIdx_]};

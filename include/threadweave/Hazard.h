@@ -45,7 +45,7 @@ class ThreadHazardManager {
   /**
    * Free this manager's resources in our pool so other threads can use it
    */
-  ~ThreadHazardManager() noexcept;
+  ~ThreadHazardManager();
 
   // --- Member functions
 

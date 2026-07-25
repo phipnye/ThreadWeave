@@ -37,7 +37,7 @@ class NodeAllocator {
     GlobalNodeCaches();
 
     // Free all of the cached memory in global caches
-    ~GlobalNodeCaches() noexcept;
+    ~GlobalNodeCaches();
 
     // Prevent copying or moving
     GlobalNodeCaches(const GlobalNodeCaches&) = delete;
@@ -204,8 +204,7 @@ NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches() {
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-NodeAllocator<Node,
-              NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() noexcept {
+NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() {
   // Note, this destructor is completely safe at the time it gets called by the
   // use of shared pointers with reference counting. So long as the a thread
   // cache holds a reference, this destructor won't get called. This prevents
