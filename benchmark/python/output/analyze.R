@@ -39,7 +39,7 @@ DT[, balanced := str_detect(run_name, "Un[Bb]alanced", negate = TRUE)]
 DT[, c("run_name", "n_threads", "n_tasks", "real_time") := tstrsplit(run_name, "/", type.convert = TRUE)]
 DT[, c("run_name", "real_time", "family_index", "per_family_instance_index") := NULL]
 setcolorder(DT, c("package_name", "balanced", "n_threads", "n_tasks"))
-setorder(DT, n_threads, n_tasks, package_name)
+setorder(DT, n_threads, n_tasks, balanced, package_name)
 
 DT2 <- dcast(DT, n_threads + n_tasks + balanced ~ package_name, value.var = "mean")
 DT2[, speedup := BS / TW] # <1 means BS is faster
@@ -89,7 +89,7 @@ ggplot(DT2, aes(x = factor(n_tasks), y = speedup, fill = factor(n_threads))) +
   theme_minimal(base_size = 13) +
   theme(legend.position = "right", panel.grid.minor = element_blank())
 
-ggplot(DT[(!balanced)], aes(x = factor(n_tasks), y = mean / 1000, color = package_name, group = package_name)) +
+ggplot(DT[(balanced)], aes(x = factor(n_tasks), y = mean / 1000, color = package_name, group = package_name)) +
   geom_line(linewidth = 1.2) +
   geom_point(size = 3) +
   facet_wrap(~ n_threads, scales = "free_y", labeller = label_both) +

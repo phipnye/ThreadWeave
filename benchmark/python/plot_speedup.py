@@ -274,6 +274,66 @@ def plot_thread_scaling(df: pd.DataFrame, out_dir: Path) -> None:
     print(f"Saved plot: {output_path}")
 
 
+def plot_workload_comparison_by_task_size(df: pd.DataFrame, out_dir: Path) -> None:
+    """Plot 4: Performance comparison of Library x Workload grouped by Task Size across Thread Counts."""
+    df_plot = df.copy()
+    
+    # Combine Library and Workload into a single label for clear bar-by-bar comparison
+    df_plot["Lib_Workload"] = df_plot["Library"] + " (" + df_plot["Workload"] + ")"
+
+    # Helper function to format large task counts nicely in subplot titles
+    def fmt_tasks(val: int) -> str:
+        if val >= 1_000_000:
+            return f"{val/1_000_000:.1f}M".rstrip(".0")
+        if val >= 1_000:
+            return f"{val/1_000:.1f}k".rstrip(".0")
+        return str(val)
+
+    df_plot["Tasks_Formatted"] = df_plot["Tasks"].apply(fmt_tasks)
+
+    # Order task columns naturally based on numeric size
+    sorted_tasks = sorted(df_plot["Tasks"].unique())
+    col_order = [fmt_tasks(t) for t in sorted_tasks]
+
+    # Threads as natural integers on X-axis
+    thread_order = sorted(df_plot["Threads"].unique())
+
+    g = sns.catplot(
+        data=df_plot,
+        x="Threads",
+        y="Time_ms",
+        hue="Lib_Workload",
+        col="Tasks_Formatted",
+        col_order=col_order,
+        order=thread_order,
+        kind="bar",
+        height=4,
+        aspect=1.2,
+        sharey=False,  # Unlocks the Y-axis scale per task size
+    )
+
+    g.set_axis_labels("Thread Count", "Execution Time (ms)")
+    g.set_titles(col_template="{col_name} Tasks")
+
+    # Add light gridlines and ensure Y-axis starts cleanly at zero for each facet
+    for ax in g.axes.flat:
+        ax.set_ylim(bottom=0)
+        ax.grid(True, which="major", axis="y", linestyle=":", alpha=0.6)
+
+    g.add_legend(title="Library & Workload", frameon=True)
+    g.figure.subplots_adjust(top=0.85)
+    g.figure.suptitle(
+        "Library vs. Workload Performance Faceted by Task Size",
+        fontsize=14,
+        fontweight="bold",
+    )
+
+    output_path: Path = out_dir / "04_workload_performance_by_task_size.png"
+    g.savefig(output_path)
+    plt.close()
+    print(f"Saved plot: {output_path}")
+
+
 def main() -> None:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description="Analyze Google Benchmark JSON outputs with zero hardcoded assumptions."
@@ -308,6 +368,7 @@ def main() -> None:
     plot_execution_times(df, args.out_dir)
     plot_speedup_heatmaps(pivot_df, baseline_lib, args.out_dir)
     plot_thread_scaling(df, args.out_dir)
+    plot_workload_comparison_by_task_size(df, args.out_dir)
     print(f"\nAnalysis complete. Plots saved to: {args.out_dir.resolve()}")
 
 

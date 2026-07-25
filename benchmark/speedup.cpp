@@ -1,14 +1,13 @@
 /* Benchmark execution time across a number of threads for a range of number of
  * tasks to identify how execution time scales/speeds up as the number of
- * workers increases. BaseIter is tuned to a value where the latency/overhead
- * does not dominate task time (at which point parallelism would be an
- * inappropriate choice).
+ * workers increases.
  */
 
 #include <benchmark/benchmark.h>
 #include <threadweave/ThreadPool.h>
 
 #include <cstddef>
+#include <future>
 #include <random>
 #include <vector>
 
@@ -18,8 +17,8 @@ using ThreadWeave::Index;
 
 // --- Global parameters
 
-constexpr Index kBaseIter{10'000'000};
-constexpr Index kNumThreadArgs[]{2, 4, 8, 12};
+constexpr Index kBaseIter{20'000'000};
+constexpr Index kNumThreadArgs[]{2, 3, 4};
 constexpr Index kNumTaskArgs[]{100, 1'000, 10'000};
 
 static void nTasksAndThreadsArgs(benchmark::Benchmark* b) {
