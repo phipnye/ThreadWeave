@@ -7,9 +7,9 @@
 
 namespace ThreadWeave::Internal {
 
-ThreadHazardManager::ThreadHazardManager() : poolIdx_{MaxThreads} {
+ThreadHazardManager::ThreadHazardManager() : poolIdx_{kMaxThreads} {
   // Search for the first available slot in our thread slot pool
-  for (Index i{0}; i < MaxThreads; ++i) {
+  for (Index i{0}; i < kMaxThreads; ++i) {
     // Check ith slot to see if it's been claimed yet
     auto& [id, ptrs]{slotsPool[i]};
 
@@ -24,7 +24,7 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{MaxThreads} {
 
   // There are no available thread slots for the current thread, throw a runtime
   // error
-  if (poolIdx_ == MaxThreads) {
+  if (poolIdx_ == kMaxThreads) {
     throw std::runtime_error{"No available hazard pointers"};
   }
 }

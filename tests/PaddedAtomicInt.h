@@ -6,7 +6,7 @@
 
 // Helper class for testing on an atomic integer with padding to avoid false
 // sharing
-struct alignas(ThreadWeave::Internal::CacheLineSize) PaddedAtomicInt {
+struct alignas(ThreadWeave::Internal::kCacheLineSize) PaddedAtomicInt {
   std::atomic<int> val{0};
 
   int fetch_add(const int x, const std::memory_order order) {

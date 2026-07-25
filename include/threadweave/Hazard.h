@@ -22,7 +22,7 @@ class ThreadHazardManager {
     std::atomic<std::thread::id> id;
     std::atomic<void*> ptr[static_cast<Index>(HazardSlot::COUNT)];
   };
-  static inline ThreadSlots slotsPool[MaxThreads]{};
+  static inline ThreadSlots slotsPool[kMaxThreads]{};
 
   // --- Data members
   Index poolIdx_;  // manager's thread slot index

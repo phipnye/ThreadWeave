@@ -41,9 +41,9 @@ class ThreadPool {
   static thread_local inline Index workerId{-1};
 
   // Bit tools state manipulation
-  static constexpr std::uint64_t stopMask{1ULL};
-  static constexpr std::uint64_t taskShift{1ULL};
-  static constexpr std::uint64_t taskUnit{1ULL << taskShift};
+  static constexpr std::uint64_t kStopMask{1ULL};
+  static constexpr std::uint64_t kTaskShift{1ULL};
+  static constexpr std::uint64_t kTaskUnit{1ULL << kTaskShift};
 
   // --- Data members
 
@@ -59,16 +59,16 @@ class ThreadPool {
 
   // State of the pool (LSB stores signal to stop and remaining bits store the
   // number of queued and non-executing tasks the queue still has)
-  alignas(Internal::CacheLineSize) std::atomic<std::uint64_t> state_;
+  alignas(Internal::kCacheLineSize) std::atomic<std::uint64_t> state_;
 
   // Number of tasks (in queue OR executing) the pool still has
-  alignas(Internal::CacheLineSize) std::atomic<Index> nPendingTasks_;
+  alignas(Internal::kCacheLineSize) std::atomic<Index> nPendingTasks_;
 
   // Number of workers that are parked
-  alignas(Internal::CacheLineSize) std::atomic<Index> nParkedWorkers_;
+  alignas(Internal::kCacheLineSize) std::atomic<Index> nParkedWorkers_;
 
   // Mutual exclusion key for preventing multiple consumers of injection queue
-  alignas(Internal::CacheLineSize) std::atomic_flag injectionKey_;
+  alignas(Internal::kCacheLineSize) std::atomic_flag injectionKey_;
 
  public:
   // --- Ctors, Assignment, and Dtor
@@ -197,7 +197,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   // constraints for this buffer
   using BoundTask = decltype(boundTask);
   static_assert(
-      sizeof(BoundTask) <= Node::payloadSize,
+      sizeof(BoundTask) <= Node::kPayloadSize,
       "Task arguments exceed the FutureNode's internal buffer limit. "
       "Consider reducing the size of passed arguments or define the macro "
       "TW_PAYLOAD_SIZE to increase the size of the internal buffer.");

@@ -7,23 +7,24 @@ using ThreadWeave::Index;
 
 // --- Global Parameters (Configure all sweeps here)
 
-constexpr Index NumThreadArgs[]{1, 2, 4, 8, 12};
-constexpr Index NumBatchTaskArgs[]{10, 100, 1'000, 10'000};
-constexpr Index GranularityIterArgs[]{10, 50, 100, 500, 1'000, 5'000, 10'000, 50'000, 100'000};
+constexpr Index kNumThreadArgs[]{1, 2, 4, 8, 12};
+constexpr Index kNumBatchTaskArgs[]{10, 100, 1'000, 10'000};
+constexpr Index kGranularityIterArgs[]{10,    50,     100,    500,    1'000,
+                                       5'000, 10'000, 50'000, 100'000};
 
 // --- Argument Generators
 
 // Generates thread sweeps: {1}, {2}, {4}, {8}, {12}
 static void threadCountArgs(benchmark::Benchmark* b) {
-  for (const Index nThreads : NumThreadArgs) {
+  for (const Index nThreads : kNumThreadArgs) {
     b->Arg(nThreads);
   }
 }
 
 // Generates matrix of threads x batch sizes
 static void batchArgs(benchmark::Benchmark* b) {
-  for (const Index nThreads : NumThreadArgs) {
-    for (const Index nTasks : NumBatchTaskArgs) {
+  for (const Index nThreads : kNumThreadArgs) {
+    for (const Index nTasks : kNumBatchTaskArgs) {
       b->Args({nThreads, nTasks});
     }
   }
@@ -31,8 +32,8 @@ static void batchArgs(benchmark::Benchmark* b) {
 
 // Generates matrix of threads x task durations
 static void parallelGranularityArgs(benchmark::Benchmark* b) {
-  for (const Index nThreads : NumThreadArgs) {
-    for (const Index nIter : GranularityIterArgs) {
+  for (const Index nThreads : kNumThreadArgs) {
+    for (const Index nIter : kGranularityIterArgs) {
       b->Args({nThreads, nIter});
     }
   }
@@ -40,7 +41,7 @@ static void parallelGranularityArgs(benchmark::Benchmark* b) {
 
 // Generates single-thread iteration sweeps for sequential baseline
 static void sequentialGranularityArgs(benchmark::Benchmark* b) {
-  for (const Index nIter : GranularityIterArgs) {
+  for (const Index nIter : kGranularityIterArgs) {
     b->Arg(nIter);
   }
 }
@@ -57,7 +58,8 @@ static Index busyWork(const Index nIter) {
 }
 
 // --- 1. Single-Task Latency vs. Thread Count
-// Measures how thread pool size impacts single task submission & retrieval overhead.
+// Measures how thread pool size impacts single task submission & retrieval
+// overhead.
 
 static void twSingleTaskLatencyBM(benchmark::State& state) {
   state.SetLabel("library=ThreadWeave;type=SingleTaskLatency");
@@ -72,7 +74,8 @@ static void twSingleTaskLatencyBM(benchmark::State& state) {
 }
 
 // --- 2. Batch Latency vs. Thread Count & Task Count
-// Measures enqueue/dequeue contention as both worker count and task count scale.
+// Measures enqueue/dequeue contention as both worker count and task count
+// scale.
 
 static void twBatchLatencyBM(benchmark::State& state) {
   state.SetLabel("library=ThreadWeave;type=BatchLatency");

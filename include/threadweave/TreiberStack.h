@@ -22,11 +22,11 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T> &&
            std::is_nothrow_move_assignable_v<T>)
-class alignas(Internal::CacheLineSize) TreiberStack {
+class alignas(Internal::kCacheLineSize) TreiberStack {
   // --- Data members
   using Node = Internal::StackNode<T>;
   using Allocator = Internal::NodeAllocator<Node>;
-  alignas(Internal::CacheLineSize) std::atomic<Node*> head_{nullptr};
+  alignas(Internal::kCacheLineSize) std::atomic<Node*> head_{nullptr};
 
  public:
   // --- Ctors, dtor, and assignment operators

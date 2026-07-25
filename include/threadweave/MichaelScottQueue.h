@@ -26,8 +26,8 @@ class MichaelScottQueue {
   // --- Data members
   using Node = Internal::QueueNode<std::optional<T>>;
   using Allocator = Internal::NodeAllocator<Node>;
-  alignas(Internal::CacheLineSize) std::atomic<Node*> head_{nullptr};
-  alignas(Internal::CacheLineSize) std::atomic<Node*> tail_{nullptr};
+  alignas(Internal::kCacheLineSize) std::atomic<Node*> head_{nullptr};
+  alignas(Internal::kCacheLineSize) std::atomic<Node*> tail_{nullptr};
 
  public:
   // --- Ctor, dtor, and assignment operators

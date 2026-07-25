@@ -110,14 +110,15 @@ struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   // User-defined payload size
   static_assert(TW_PAYLOAD_SIZE > 0,
                 "TW_PAYLOAD_SIZE must be strictly poisitive");
-  static constexpr Index payloadSize{TW_PAYLOAD_SIZE};
+  static constexpr Index kPayloadSize{TW_PAYLOAD_SIZE};
 #else
   // Default to 128 bytes if user does not define value
-  static constexpr Index payloadSize{128};
+  static constexpr Index kPayloadSize{128};
 #endif
 
   // --- Data members
-  alignas(std::max_align_t) std::byte payload[payloadSize];  // function payload
+  alignas(
+      std::max_align_t) std::byte payload[kPayloadSize];  // function payload
   std::exception_ptr exception{nullptr};
   alignas(ResultT) std::byte resultBuffer[sizeof(ResultT)];
   AllocatorInfo<FutureNode> _internal{};

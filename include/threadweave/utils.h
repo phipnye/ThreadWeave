@@ -17,12 +17,12 @@ static_assert(TW_CACHE_LINE_SIZE > 0, "Cache line size should be positive");
 // ReSharper disable once CppCompileTimeConstantCanBeReplacedWithBooleanConstant
 static_assert(!(TW_CACHE_LINE_SIZE & (TW_CACHE_LINE_SIZE - 1)),
               "Cache line size should be a power of 2");
-inline constexpr Index CacheLineSize{TW_CACHE_LINE_SIZE};
+inline constexpr Index kCacheLineSize{TW_CACHE_LINE_SIZE};
 #elif defined(__cpp_lib_hardware_interference_size)
-inline constexpr Index CacheLineSize{
+inline constexpr Index kCacheLineSize{
     std::hardware_destructive_interference_size};
 #else
-inline constexpr Index CacheLineSize{128};
+inline constexpr Index kCacheLineSize{128};
 #endif
 
 // Maximum number of threads for fixed-sized hazard pointer pool and node
@@ -30,10 +30,10 @@ inline constexpr Index CacheLineSize{128};
 #ifdef TW_MAX_THREADS
 static_assert(TW_MAX_THREADS > 0,
               "Max number of threads should be a positive value");
-inline constexpr Index MaxThreads{TW_MAX_THREADS};
+inline constexpr Index kMaxThreads{TW_MAX_THREADS};
 #else
 // Default value, user can set via macro
-inline constexpr Index MaxThreads{64};
+inline constexpr Index kMaxThreads{64};
 #endif
 
 }  // namespace Internal

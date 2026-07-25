@@ -18,13 +18,13 @@ using ThreadWeave::Index;
 
 // --- Global parameters
 
-constexpr Index BaseIter{10'000'000};
-constexpr Index NumThreadArgs[]{2, 4, 8, 12};
-constexpr Index NumTaskArgs[]{100, 1'000, 10'000};
+constexpr Index kBaseIter{10'000'000};
+constexpr Index kNumThreadArgs[]{2, 4, 8, 12};
+constexpr Index kNumTaskArgs[]{100, 1'000, 10'000};
 
 static void nTasksAndThreadsArgs(benchmark::Benchmark* b) {
-  for (const Index nTasks : NumTaskArgs) {
-    for (const Index nThreads : NumThreadArgs) {
+  for (const Index nTasks : kNumTaskArgs) {
+    for (const Index nThreads : kNumThreadArgs) {
       b->Args({nThreads, nTasks});
     }
   }
@@ -79,7 +79,7 @@ static void twBalancedWorkloadBM(benchmark::State& state) {
 
     // First submit a series of balanced tasks
     for (Index i{0}; i < nTasks; ++i) {
-      futures.push_back(pool.submit(busyWork, BaseIter));
+      futures.push_back(pool.submit(busyWork, kBaseIter));
     }
 
     // Then collect results after all tasks have been submitted
@@ -108,7 +108,7 @@ static void bsBalancedWorkloadBM(benchmark::State& state) {
 
     // First submit a series of balanced tasks
     for (Index i{0}; i < nTasks; ++i) {
-      futures.push_back(pool.submit_task([] { return busyWork(BaseIter); }));
+      futures.push_back(pool.submit_task([] { return busyWork(kBaseIter); }));
     }
 
     // Then collect results after all tasks have been submitted
@@ -130,7 +130,7 @@ static void twUnbalancedWorkloadBM(benchmark::State& state) {
   ThreadWeave::ThreadPool pool{nThreads};
   std::vector<ThreadWeave::Future<Index>> futures{};
   futures.reserve(nTasks);
-  const std::vector<Index> taskIters{genUnbalancedWorkloads(nTasks, BaseIter)};
+  const std::vector<Index> taskIters{genUnbalancedWorkloads(nTasks, kBaseIter)};
   Index res{0};
 
   for (auto _ : state) {
@@ -160,7 +160,7 @@ static void bsUnbalancedWorkloadBM(benchmark::State& state) {
   BS::thread_pool pool{static_cast<std::size_t>(nThreads)};
   std::vector<std::future<Index>> futures{};
   futures.reserve(nTasks);
-  const std::vector<Index> taskIters{genUnbalancedWorkloads(nTasks, BaseIter)};
+  const std::vector<Index> taskIters{genUnbalancedWorkloads(nTasks, kBaseIter)};
   Index res{0};
 
   for (auto _ : state) {

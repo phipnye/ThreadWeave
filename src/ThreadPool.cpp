@@ -186,21 +186,21 @@ void ThreadPool::executeTask(FutureNodeBase* const task) {
 std::tuple<std::uint64_t, std::uint64_t, bool> ThreadPool::getState(
     const std::memory_order order) const noexcept {
   const std::uint64_t state{state_.load(order)};
-  const std::uint64_t nQueuedTasks{state >> taskShift};
-  const std::uint64_t stop{state & stopMask};
+  const std::uint64_t nQueuedTasks{state >> kTaskShift};
+  const std::uint64_t stop{state & kStopMask};
   return std::make_tuple(state, nQueuedTasks, static_cast<bool>(stop));
 }
 
 void ThreadPool::setStop(const std::memory_order order) noexcept {
-  state_.fetch_or(stopMask, order);
+  state_.fetch_or(kStopMask, order);
 }
 
 void ThreadPool::incrementNumQueued(const std::memory_order order) noexcept {
-  state_.fetch_add(taskUnit, order);
+  state_.fetch_add(kTaskUnit, order);
 }
 
 void ThreadPool::decrementNumQueued(const std::memory_order order) noexcept {
-  state_.fetch_sub(taskUnit, order);
+  state_.fetch_sub(kTaskUnit, order);
 }
 
 }  // namespace ThreadWeave

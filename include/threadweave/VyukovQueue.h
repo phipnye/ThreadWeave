@@ -19,8 +19,8 @@ class VyukovQueue {
   using Allocator = Internal::NodeAllocator<Node>;
 
   // --- Data members
-  alignas(Internal::CacheLineSize) std::atomic<Node*> tail_{nullptr};
-  alignas(Internal::CacheLineSize) Node* head_{nullptr};
+  alignas(Internal::kCacheLineSize) std::atomic<Node*> tail_{nullptr};
+  alignas(Internal::kCacheLineSize) Node* head_{nullptr};
 
  public:
   // --- Ctors, dtor, and assignment operators

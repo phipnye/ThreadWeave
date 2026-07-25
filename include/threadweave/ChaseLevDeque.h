@@ -24,16 +24,16 @@ namespace ThreadWeave {
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
-class alignas(Internal::CacheLineSize) ChaseLevDeque {
+class alignas(Internal::kCacheLineSize) ChaseLevDeque {
   // --- A helper array class for our work-stealing deque.
   class RingBuffer {
-    static constexpr Index defaultCapacity{16};
+    static constexpr Index kDefaultCapacity{16};
     std::unique_ptr<std::atomic<T>[]> buffer_;
     const Index capacity_;  // capacity is read-only and safe from data races
 
    public:
     // Ctor (capacity must be a power of 2 for correct bitmask logic)
-    explicit RingBuffer(Index capacity = defaultCapacity);
+    explicit RingBuffer(Index capacity = kDefaultCapacity);
 
     // Dtor
     ~RingBuffer() = default;
@@ -52,16 +52,16 @@ class alignas(Internal::CacheLineSize) ChaseLevDeque {
   };
 
   // --- Data members
-  alignas(Internal::CacheLineSize) std::atomic<RingBuffer*> data_;
-  alignas(Internal::CacheLineSize) std::atomic<Index> front_{0};
-  alignas(Internal::CacheLineSize) std::atomic<Index> back_{0};
+  alignas(Internal::kCacheLineSize) std::atomic<RingBuffer*> data_;
+  alignas(Internal::kCacheLineSize) std::atomic<Index> front_{0};
+  alignas(Internal::kCacheLineSize) std::atomic<Index> back_{0};
   std::vector<std::unique_ptr<RingBuffer>> garbage_{};
 
  public:
   // To make sure of no invalid pointer use after a resize, we keep track of the
   // number of expansions to test our logic in unit tests
 #ifndef NDEBUG
-  alignas(Internal::CacheLineSize) std::atomic<int> debugExpandCnt{0};
+  alignas(Internal::kCacheLineSize) std::atomic<int> debugExpandCnt{0};
 #endif
 
   // --- Ctors, dtor, and assignment operators
