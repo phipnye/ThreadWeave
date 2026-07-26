@@ -63,54 +63,10 @@ void ThreadPool::workerLoop(const Index threadId) {
   currentPool = this;
   workerId = threadId;
 
-  // Random number generation to try to steal from other thread's work deques
-  std::mt19937 rng{static_cast<std::size_t>(threadId)};
-  std::uniform_int_distribution<Index> idxDist{0, nThreads_ - 1};
-
   while (true) {
-    // Drain the global injection (MPSC) queue into this worker's deeque so
-    // other threads can steal from it
-    if (const KeyGuard keyGuard{injectionKey_}; keyGuard.holdsKey()) {
-      // Limit the amount a worker can drain at a time to minimize deque
-      // allocations and encourage task sharing among deques
-      for (Index _{0}; _ < kMaxDrain; ++_) {
-        if (const std::optional task{injectionQueue_.pop()}) {
-          workerDeques_[threadId].push(*task);
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Try taking a task from our current thread's work queue first
-    if (const std::optional task{workerDeques_[threadId].pop()}) {
-      executeTask(*task);
-      continue;
-    }
-
-    // Try stealing a task from the other threads (random start index alleviates
-    // contention)
-    bool stoleTask{false};
-    const Index victimIdx{idxDist(rng)};
-
-    for (Index i{0}; i < nThreads_; ++i) {
-      // Index of thread to try to steal from
-      const Index stealId{(victimIdx + i) % nThreads_};
-
-      // Prevent stealing worker from stealing from itself
-      if (stealId == threadId) {
-        continue;
-      }
-
-      // Successful stealing of a task
-      if (const std::optional task{workerDeques_[stealId].steal()}) {
-        executeTask(*task);
-        stoleTask = true;
-        break;
-      }
-    }
-
-    if (stoleTask) {
+    // Try executing a task from the worker's deque or stealing another worker's
+    // task
+    if (tryExecuteTask(threadId)) {
       continue;
     }
 
@@ -170,6 +126,53 @@ void ThreadPool::workerLoop(const Index threadId) {
       nParkedWorkers_.fetch_sub(1, MemoryOrder::relaxed);
     }
   }
+}
+bool ThreadPool::tryExecuteTask(const Index threadId) {
+  // Drain the global injection (MPSC) queue into this worker's deeque so
+  // other threads can steal from it
+  if (const KeyGuard keyGuard{injectionKey_}; keyGuard.holdsKey()) {
+    // Limit the amount a worker can drain at a time to minimize deque
+    // allocations and encourage task sharing among deques
+    for (Index _{0}; _ < kMaxDrain; ++_) {
+      if (const std::optional task{injectionQueue_.pop()}) {
+        workerDeques_[threadId].push(*task);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Try taking a task from our current thread's work queue first
+  if (const std::optional task{workerDeques_[threadId].pop()}) {
+    executeTask(*task);
+    return true;
+  }
+
+  // Try stealing a task from the other threads (random start index alleviates
+  // contention)
+  thread_local std::mt19937 rng{static_cast<std::size_t>(threadId)};
+  std::uniform_int_distribution<Index> idxDist{0, nThreads_ - 1};
+  bool stoleTask{false};
+  const Index victimIdx{idxDist(rng)};
+
+  for (Index i{0}; i < nThreads_; ++i) {
+    // Index of thread to try to steal from
+    const Index stealId{(victimIdx + i) % nThreads_};
+
+    // Prevent stealing worker from stealing from itself
+    if (stealId == threadId) {
+      continue;
+    }
+
+    // Successful stealing of a task
+    if (const std::optional task{workerDeques_[stealId].steal()}) {
+      executeTask(*task);
+      stoleTask = true;
+      break;
+    }
+  }
+
+  return stoleTask;
 }
 
 void ThreadPool::executeTask(FutureNodeBase* const task) {

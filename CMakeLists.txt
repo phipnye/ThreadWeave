@@ -27,6 +27,7 @@ set(COMPILER_FLAGS
 add_library(ThreadWeave STATIC)
 target_sources(ThreadWeave
         PRIVATE
+        src/Future.cpp
         src/Hazard.cpp
         src/ThreadPool.cpp
 

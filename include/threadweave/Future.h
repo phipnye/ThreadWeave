@@ -3,14 +3,86 @@
 
 #include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
+#include <threadweave/utils.h>
 
 #include <cassert>
+#include <cstddef>
 #include <exception>
 #include <new>
 #include <type_traits>
 #include <utility>
 
 namespace ThreadWeave {
+
+// Future node base class to hold function pointer and maintain node reference
+// count
+class FutureNodeBase {
+ protected:
+  enum class FutureStatus : std::int8_t { pending, ready, waiting };
+
+ public:
+  // --- Data members
+
+  // Function pointer to function to execute
+  void (*execute)(FutureNodeBase*){nullptr};
+
+  // Status of the result
+  std::atomic<FutureStatus> state{FutureStatus::pending};
+
+  // Reference count for resource management (future and thread pool hold refs)
+  std::atomic<std::int8_t> refCount{2};
+
+  // --- Member functions
+
+  // Determine if future result is ready
+  bool isReady() const noexcept;
+
+  // Decrements reference count indicating caller no longer needs the node to
+  // stay alive at which point the last caller can call deallocate()
+  bool release() noexcept;
+
+  // Wait for the task to finish running
+  void wait() noexcept;
+
+  // Notify when the task is done running
+  void notify() noexcept;
+};
+
+template <typename T>
+class FutureNode : public FutureNodeBase {  // NOLINT(*-pro-type-member-init)
+  using ResultT = std::conditional_t<std::is_void_v<T>, std::byte, T>;
+
+ public:
+#ifdef TW_PAYLOAD_SIZE
+  // User-defined payload size
+  static_assert(TW_PAYLOAD_SIZE > 0,
+                "TW_PAYLOAD_SIZE must be strictly poisitive");
+  static constexpr Index kPayloadSize{TW_PAYLOAD_SIZE};
+#else
+  // Default to 128 bytes if user does not define value
+  static constexpr Index kPayloadSize{128};
+#endif
+
+  // --- Data members
+  alignas(
+      std::max_align_t) std::byte payload[kPayloadSize];  // function payload
+  std::exception_ptr exception{nullptr};
+  alignas(ResultT) std::byte resultBuffer[sizeof(ResultT)];
+  Internal::AllocatorInfo<FutureNode> _internal{};
+  bool hasResult{false};
+
+  // Dtor
+  ~FutureNode();
+
+  // --- Member functions
+
+  // Reset the members of our future node instance
+  void reset() noexcept;
+
+ private:
+  // Clean up stored results if present
+  void destroyResults() noexcept;
+};
 
 /**
  * A template class providing a mechanism to retrieve results from an
@@ -21,9 +93,9 @@ namespace ThreadWeave {
 template <typename T>
 class Future {
   // --- Data members
-  using Node = Internal::FutureNode<T>;
-  using Allocator = Internal::NodeAllocator<Node>;
-  Node* node_;
+  using FutureNode = FutureNode<T>;
+  using Allocator = Internal::NodeAllocator<FutureNode>;
+  FutureNode* node_;
 
  public:
   // --- Ctors, dtor, and assignment operators
@@ -34,7 +106,7 @@ class Future {
    * @param node A pointer to a future node for storing results, exceptions,
    * functions, and payloads
    */
-  explicit Future(Node* node);
+  explicit Future(FutureNode* node);
 
   /**
    * Safely return our node back to our allocator to return it to the free list
@@ -52,8 +124,7 @@ class Future {
    * resources
    * @param other Future to move construct from
    */
-  Future(Future&& other) noexcept
-      : node_{std::exchange(other.node_, nullptr)} {}
+  Future(Future&& other) noexcept;
 
   /**
    * Assign a future another future's resources
@@ -82,16 +153,20 @@ class Future {
    * @param node A pointer to the future node that is no longer needed by the
    * caller
    */
-  static void retire(Node* node);
+  static void retire(FutureNode* node);
 };
 
 template <typename T>
-Future<T>::Future(Node* node) : node_{node} {}
+Future<T>::Future(FutureNode* node) : node_{node} {}
 
 template <typename T>
 Future<T>::~Future() {
   retire(node_);
 }
+
+template <typename T>
+Future<T>::Future(Future&& other) noexcept
+    : node_{std::exchange(other.node_, nullptr)} {}
 
 template <typename T>
 Future<T>& Future<T>::operator=(Future&& other) noexcept {
@@ -116,7 +191,7 @@ T Future<T>::get() {
 
   // Steal the future node
   assert(node_ && "Called get on a null future node");
-  Node* node{std::exchange(node_, nullptr)};
+  FutureNode* node{std::exchange(node_, nullptr)};
 
   // Rethrow any stored exceptions
   if (node->exception) {
@@ -157,9 +232,36 @@ T Future<T>::get() {
 }
 
 template <typename T>
-void Future<T>::retire(Node* node) {
+void Future<T>::retire(FutureNode* node) {
   if (node && node->release()) {
     Allocator::deallocate(node);
+  }
+}
+
+template <typename T>
+FutureNode<T>::~FutureNode() {
+  // Guards against leaking a completed result that was never retrieved
+  destroyResults();
+}
+
+template <typename T>
+void FutureNode<T>::reset() noexcept {
+  destroyResults();
+  exception = nullptr;
+  execute = nullptr;
+  refCount.store(2, MemoryOrder::relaxed);
+  state.store(FutureStatus::pending, MemoryOrder::relaxed);
+}
+
+template <typename T>
+void FutureNode<T>::destroyResults() noexcept {
+  if constexpr (!std::is_void_v<T>) {
+    if (hasResult) {
+      std::launder(reinterpret_cast<ResultT*>(resultBuffer))->~ResultT();
+      hasResult = false;
+    }
+  } else {
+    hasResult = false;
   }
 }
 

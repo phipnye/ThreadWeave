@@ -9,6 +9,15 @@
 
 namespace ThreadWeave::Internal {
 
+// Enum tracking the index of a hazard slot
+enum class HazardSlot : Index {
+  Stack0 = 0,  // Stack only requires one hazard
+  Queue0 = 0,  // Queue requires two hazards
+  Queue1 = 1,
+  Alloc2 = 2,  // Future requires one isolated hazard
+  COUNT = 3    // Number of hazard slots per thread
+};
+
 /**
  * Class to be used in a thread local context in which a given thread utilizes
  * the manager to acquire hazard pointers from a pool of them. Each

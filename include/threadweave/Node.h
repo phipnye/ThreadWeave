@@ -1,19 +1,12 @@
 #ifndef TW_NODE_H
 #define TW_NODE_H
 
-#include <threadweave/enums.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
 #include <concepts>
-#include <cstddef>
-#include <exception>
 #include <new>
 #include <type_traits>
-
-#ifndef NDEBUG
-#include <cstring>
-#endif
 
 namespace ThreadWeave::Internal {
 
@@ -84,111 +77,6 @@ struct QueueNode {
   void reset() noexcept {
     resetValue(data);
     next.store(nullptr, MemoryOrder::relaxed);
-  }
-};
-
-// Future node base class to hold function pointer and maintain node reference
-// count
-struct FutureNodeBase {
-  void (*execute)(FutureNodeBase*){nullptr};
-  std::atomic<std::int8_t> refCount{2};  // future and thread pool hold refs
-
-  // Decrements reference count indicating caller no longer needs the node to
-  // stay alive at which point the last caller can call deallocate()
-  bool release() noexcept {
-    return refCount.fetch_sub(1, MemoryOrder::acq_rel) == 1;
-  }
-};
-
-template <typename T>
-struct FutureNode : FutureNodeBase {  // NOLINT(*-pro-type-member-init)
- private:
-  using ResultT = std::conditional_t<std::is_void_v<T>, std::byte, T>;
-
- public:
-#ifdef TW_PAYLOAD_SIZE
-  // User-defined payload size
-  static_assert(TW_PAYLOAD_SIZE > 0,
-                "TW_PAYLOAD_SIZE must be strictly poisitive");
-  static constexpr Index kPayloadSize{TW_PAYLOAD_SIZE};
-#else
-  // Default to 128 bytes if user does not define value
-  static constexpr Index kPayloadSize{128};
-#endif
-
-  // --- Data members
-  alignas(
-      std::max_align_t) std::byte payload[kPayloadSize];  // function payload
-  std::exception_ptr exception{nullptr};
-  alignas(ResultT) std::byte resultBuffer[sizeof(ResultT)];
-  AllocatorInfo<FutureNode> _internal{};
-  std::atomic<FutureStatus> state{FutureStatus::pending};
-  bool hasResult{false};
-
-  // Dtor
-  ~FutureNode() {
-    // Guards against leaking a completed result that was never retrieved
-    destroyResults();
-  }
-
-  // --- Member functions
-
-  // Wait for the task to finish running
-  void wait() noexcept {
-    // Early-return if task already complete
-    if (state.load(MemoryOrder::acquire) == FutureStatus::ready) {
-      return;
-    }
-
-    // Try transitioning from waiting to running
-    auto expected{FutureStatus::pending};
-    state.compare_exchange_strong(expected, FutureStatus::waiting,
-                                  MemoryOrder::release, MemoryOrder::relaxed);
-
-    // Wait until the task is ready (no longer waiting)
-    while (state.load(MemoryOrder::acquire) != FutureStatus::ready) {
-      state.wait(FutureStatus::waiting, MemoryOrder::relaxed);
-    }
-  }
-
-  // Notify when the task is done running
-  void notify() noexcept {
-    // Update to ready and notify waiting entities if it was originally in a
-    // waiting state
-    if (const FutureStatus oldState{
-            state.exchange(FutureStatus::ready, MemoryOrder::release)};
-        oldState == FutureStatus::waiting) {
-      state.notify_one();
-    }
-  }
-
-  // Reset the members of our future node instance (note this is only safe once
-  // no other thread can observe this node, the allocator enforces this before
-  // calling reset)
-  void reset() noexcept {
-    destroyResults();
-    exception = nullptr;
-    execute = nullptr;
-    refCount.store(2, MemoryOrder::relaxed);
-    state.store(FutureStatus::pending, MemoryOrder::relaxed);
-
-#ifndef NDEBUG
-    std::memset(payload, 0, sizeof(payload));
-    std::memset(resultBuffer, 0, sizeof(resultBuffer));
-#endif
-  }
-
- private:
-  // Clean up stored results if present
-  void destroyResults() noexcept {
-    if constexpr (!std::is_void_v<T>) {
-      if (hasResult) {
-        std::launder(reinterpret_cast<ResultT*>(resultBuffer))->~ResultT();
-        hasResult = false;
-      }
-    } else {
-      hasResult = false;
-    }
   }
 };
 

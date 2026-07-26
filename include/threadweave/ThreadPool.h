@@ -120,6 +120,14 @@ class ThreadPool {
   void workerLoop(Index threadId);
 
   /**
+   * Try to have the passed thread execute a task if any tasks are available
+   * @param threadId the unique identifier/index of the thread to try to have
+   * execute a task
+   * @return true if a task was executed, false otherwise
+   */
+  bool tryExecuteTask(Index threadId);
+
+  /**
    * Execute a task stored in a future base node pointer, set its status to
    * active, and then decrements counters with proper ordering
    * @param task a pointer to a future base node with a task to execute
