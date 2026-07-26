@@ -4,7 +4,6 @@
 #include <threadweave/Hazard.h>
 #include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
-#include <threadweave/enums.h>
 #include <threadweave/utils.h>
 
 #include <atomic>

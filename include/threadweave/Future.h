@@ -14,6 +14,7 @@
 
 namespace ThreadWeave {
 
+namespace Internal {
 // Future node base class to hold function pointer and maintain node reference
 // count
 class FutureNodeBase {
@@ -68,7 +69,7 @@ class FutureNode : public FutureNodeBase {  // NOLINT(*-pro-type-member-init)
       std::max_align_t) std::byte payload[kPayloadSize];  // function payload
   std::exception_ptr exception{nullptr};
   alignas(ResultT) std::byte resultBuffer[sizeof(ResultT)];
-  Internal::AllocatorInfo<FutureNode> _internal{};
+  AllocatorInfo<FutureNode> _internal{};
   bool hasResult{false};
 
   // Dtor
@@ -84,6 +85,8 @@ class FutureNode : public FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   void destroyResults() noexcept;
 };
 
+}  // namespace Internal
+
 /**
  * A template class providing a mechanism to retrieve results from an
  * asynchronous operation
@@ -93,7 +96,7 @@ class FutureNode : public FutureNodeBase {  // NOLINT(*-pro-type-member-init)
 template <typename T>
 class Future {
   // --- Data members
-  using FutureNode = FutureNode<T>;
+  using FutureNode = Internal::FutureNode<T>;
   using Allocator = Internal::NodeAllocator<FutureNode>;
   FutureNode* node_;
 
@@ -238,6 +241,7 @@ void Future<T>::retire(FutureNode* node) {
   }
 }
 
+namespace Internal {
 template <typename T>
 FutureNode<T>::~FutureNode() {
   // Guards against leaking a completed result that was never retrieved
@@ -264,6 +268,8 @@ void FutureNode<T>::destroyResults() noexcept {
     hasResult = false;
   }
 }
+
+}  // namespace Internal
 
 }  // namespace ThreadWeave
 

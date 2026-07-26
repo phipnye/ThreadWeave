@@ -1,6 +1,6 @@
 #include <threadweave/Future.h>
 
-namespace ThreadWeave {
+namespace ThreadWeave::Internal {
 
 bool FutureNodeBase::isReady() const noexcept {
   return state.load(MemoryOrder::acquire) == FutureStatus::ready;

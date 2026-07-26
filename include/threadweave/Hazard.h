@@ -1,7 +1,6 @@
 #ifndef TW_HAZARD_H
 #define TW_HAZARD_H
 
-#include <threadweave/enums.h>
 #include <threadweave/utils.h>
 
 #include <atomic>
