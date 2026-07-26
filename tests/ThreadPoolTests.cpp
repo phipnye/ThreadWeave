@@ -213,8 +213,7 @@ TEST(ThreadPoolTests, HandlesManyTasks) {
 
 // Make sure pool can handle recursive submissions
 TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
-  // Must have a sufficient number of threads to perform tasks recursively
-  ThreadPool pool{8};
+  ThreadPool pool{4};
 
   // Parallel version of naive fibonacci
   auto parallelFib{[&pool](this auto self, int n) {
@@ -230,8 +229,11 @@ TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
     });
   }};
 
-  auto result{parallelFib(5)};
-  EXPECT_EQ(result.get(), 8);  // fib(5) = 8
+  // This test makes sure there are no blocking calls to wait internally. By
+  // having more recursive calls than available workers, we make sure workers
+  // keep working instead of get() blocking
+  auto result{parallelFib(12)};
+  EXPECT_EQ(result.get(), 233);  // fib(12) = 233
 }
 
 // Make sure idle threads steal tasks from working threads

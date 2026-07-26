@@ -85,6 +85,13 @@ class FutureNode : public FutureNodeBase {  // NOLINT(*-pro-type-member-init)
   void destroyResults() noexcept;
 };
 
+/**
+ * Bridge function defined in ThreadPool.cpp to allow thread workers to continue
+ * working without blocking waits while waiting for a result
+ * @param node a pointer to the future node base to wait on
+ */
+void helpWait(FutureNodeBase* node) noexcept;
+
 }  // namespace Internal
 
 /**
@@ -137,14 +144,22 @@ class Future {
   Future& operator=(Future&& other) noexcept;
 
   /**
-   * Blocks until the result becomes available
+   * If the caller is a thread pool worker, waits on a future result but
+   * continues work while waiting. Otherwise, blocks until the result becomes
+   * available.
    */
   void wait() noexcept;
 
   /**
    * The get member function waits (by calling wait()) until the shared state is
    * ready, then retrieves the value stored in the future's resources (if any).
-   * If an exception was stored, then that exception will be thrown instead
+   * If an exception was stored, then that exception will be thrown instead. Get
+   * supports recursive thread pool workers calls. If the calling thread is a
+   * thread pool worker, .get() calls Future::wait(), which routes to
+   * ThreadPool::awaitNode() which detects that the caller is a worker thread.
+   * Instead of blocking, the worker thread calls tryExecuteTask(workerId)
+   * repeatedly.Recursion unwinds completely without any thread going to sleep,
+   * making deadlock mathematically impossible regardless of thread count.
    * @return the value stored in the future
    */
   T get();
@@ -184,12 +199,11 @@ Future<T>& Future<T>::operator=(Future&& other) noexcept {
 template <typename T>
 void Future<T>::wait() noexcept {
   assert(node_ && "Waiting on null node");
-  node_->wait();
+  Internal::helpWait(node_);
 }
 
 template <typename T>
 T Future<T>::get() {
-  // Wait until the result is ready
   wait();
 
   // Steal the future node

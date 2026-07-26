@@ -1,3 +1,4 @@
+#include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
 #include <threadweave/VyukovQueue.h>
 #include <threadweave/utils.h>
@@ -127,6 +128,23 @@ void ThreadPool::workerLoop(const Index threadId) {
     }
   }
 }
+
+void ThreadPool::awaitNode(FutureNodeBase* const node) {
+  // Non-worker: Fall back to standard atomic parking
+  if (currentPool == nullptr) {
+    node->wait();
+    return;
+  }
+
+  // Worker: Execute tasks until the target node completes
+  while (!node->isReady()) {
+    // Yield if failed to find a task to execute
+    if (!currentPool->tryExecuteTask(workerId)) {
+      std::this_thread::yield();
+    }
+  }
+}
+
 bool ThreadPool::tryExecuteTask(const Index threadId) {
   // Drain the global injection (MPSC) queue into this worker's deeque so
   // other threads can steal from it
@@ -230,5 +248,13 @@ ThreadPool::KeyGuard::~KeyGuard() {
 bool ThreadPool::KeyGuard::holdsKey() const noexcept {
   return keyAcquired_;
 }
+
+namespace Internal {
+
+void helpWait(FutureNodeBase* node) noexcept {
+  ThreadPool::awaitNode(node);
+}
+
+}  // namespace Internal
 
 }  // namespace ThreadWeave

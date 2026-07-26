@@ -29,9 +29,6 @@ namespace ThreadWeave {
  * Deques with the capability for threads to steal tasks from one another.
  */
 class ThreadPool {
-  // TODO: Must implement strategy to prevent get() from blocking if called
-  // within pool task submission to facilitate recursive task submission/divide
-  // and conquer
   using FutureNodeBase = Internal::FutureNodeBase;
 
   // Thread-local information that keeps track of whether the thread submitting
@@ -161,6 +158,17 @@ class ThreadPool {
    */
   void decrementNumQueued(std::memory_order order) noexcept;
 
+ public:
+  /**
+   * Helper function for a thread to wait on a future node result to be ready.
+   * If the caller is a worker thread in a thread pool, it continues executing
+   * work until results are ready. Otherwise, non-workers fallback to atomic
+   * parking behavior.
+   * @param node a pointer to the futrue node to wait on
+   */
+  static void awaitNode(FutureNodeBase* node);
+
+ private:
   /**
    * Helper RAII guard for acquiring and releasing injection key
    */
