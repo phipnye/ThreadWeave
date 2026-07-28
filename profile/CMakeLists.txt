@@ -1,6 +1,0 @@
-#add_executable(profileLatency profileLatency.cpp)
-#target_compile_options(profileLatency PRIVATE ${COMPILER_FLAGS})
-#target_compile_options(profileLatency PRIVATE -g)
-add_executable(ProfileSpeedup speedup.cpp)
-target_compile_options(ProfileSpeedup PRIVATE -g)
-target_link_libraries(ProfileSpeedup PRIVATE ThreadWeave benchmark::benchmark)

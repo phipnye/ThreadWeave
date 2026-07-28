@@ -1,6 +1,6 @@
-/* Benchmark execution time across a number of threads for a range of number of
- * tasks to identify how execution time scales/speeds up as the number of
- * workers increases.
+/* Benchmark execution time of ThreadWeave against BS::thread_pool across a
+ * range of thread counts and task counts, for both balanced and unbalanced
+ * workloads, to compare raw performance between thread pool implementations.
  */
 
 #include <benchmark/benchmark.h>
@@ -8,10 +8,10 @@
 
 #include <cstddef>
 #include <future>
-#include <random>
 #include <vector>
 
 #include "BS_thread_pool.hpp"
+#include "helpers.h"
 
 using ThreadWeave::Index;
 
@@ -21,7 +21,7 @@ constexpr Index kBaseIter{20'000'000};
 constexpr Index kNumThreadArgs[]{2, 3, 4};
 constexpr Index kNumTaskArgs[]{100, 1'000, 10'000};
 
-static void nTasksAndThreadsArgs(benchmark::Benchmark* b) {
+static void latencyArgs(benchmark::Benchmark* b) {
   for (const Index nTasks : kNumTaskArgs) {
     for (const Index nThreads : kNumThreadArgs) {
       b->Args({nThreads, nTasks});
@@ -29,41 +29,12 @@ static void nTasksAndThreadsArgs(benchmark::Benchmark* b) {
   }
 }
 
-// --- Work helper functions
-
-// Helper to simulate computation
-static Index busyWork(const Index nIter) {
-  Index sum{0};
-
-  for (Index i{0}; i < nIter; ++i) {
-    sum += 1;
-    benchmark::DoNotOptimize(sum);
-  }
-
-  return sum / nIter;  // prevent overflow
-}
-
-// Generate a series of imbalanced workloads
-static std::vector<Index> genUnbalancedWorkloads(
-    const Index nTasks, const Index baseIter, const Index pctDeviation = 50) {
-  std::mt19937 rng{42};  // NOLINT(*-msc51-cpp)
-  std::uniform_int_distribution<Index> pctDist{-pctDeviation, pctDeviation};
-  std::vector<Index> work{};
-  work.reserve(nTasks);
-
-  for (Index i{0}; i < nTasks; ++i) {
-    work.push_back(baseIter + ((baseIter * pctDist(rng)) / 100));
-  }
-
-  return work;
-}
-
 // --- Balanced workload benchmarking
 
 // Benchmark ThreadWeave's pool across a range of number of threads and number
 // of balanced (roughly equivalent amount of work) tasks
-static void twBalancedWorkloadBM(benchmark::State& state) {
-  state.SetLabel("library=ThreadWeave;workload=Balanced");
+static void twBalancedComparisonBM(benchmark::State& state) {
+  state.SetLabel("category=Comparison;library=ThreadWeave;workload=Balanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
   ThreadWeave::ThreadPool pool{nThreads};
@@ -91,8 +62,9 @@ static void twBalancedWorkloadBM(benchmark::State& state) {
 
 // Benchmark BS's pool across a range of number of threads and number
 // of balanced (roughly equivalent amount of work) tasks
-static void bsBalancedWorkloadBM(benchmark::State& state) {
-  state.SetLabel("library=BS::thread_pool;workload=Balanced");
+static void bsBalancedComparisonBM(benchmark::State& state) {
+  state.SetLabel(
+      "category=Comparison;library=BS::thread_pool;workload=Balanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
   BS::thread_pool pool{static_cast<std::size_t>(nThreads)};
@@ -122,8 +94,8 @@ static void bsBalancedWorkloadBM(benchmark::State& state) {
 
 // Benchmark ThreadWeave's pool across a range of number of threads and number
 // of unbalanced (unequal amount of work) tasks
-static void twUnbalancedWorkloadBM(benchmark::State& state) {
-  state.SetLabel("library=ThreadWeave;workload=Unbalanced");
+static void twUnbalancedComparisonBM(benchmark::State& state) {
+  state.SetLabel("category=Comparison;library=ThreadWeave;workload=Unbalanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
   ThreadWeave::ThreadPool pool{nThreads};
@@ -152,8 +124,9 @@ static void twUnbalancedWorkloadBM(benchmark::State& state) {
 
 // Benchmark BS's pool across a range of number of threads and number
 // of unbalanced (unequal amount of work) tasks
-static void bsUnbalancedWorkloadBM(benchmark::State& state) {
-  state.SetLabel("library=BS::thread_pool;workload=Unbalanced");
+static void bsUnbalancedComparisonBM(benchmark::State& state) {
+  state.SetLabel(
+      "category=Comparison;library=BS::thread_pool;workload=Unbalanced");
   const Index nThreads{state.range(0)};
   const Index nTasks{state.range(1)};
   BS::thread_pool pool{static_cast<std::size_t>(nThreads)};
@@ -182,23 +155,23 @@ static void bsUnbalancedWorkloadBM(benchmark::State& state) {
 
 // --- Register benchmarks
 
-BENCHMARK(twBalancedWorkloadBM)
-    ->Apply(nTasksAndThreadsArgs)
+BENCHMARK(twBalancedComparisonBM)
+    ->Apply(latencyArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(bsBalancedWorkloadBM)
-    ->Apply(nTasksAndThreadsArgs)
+BENCHMARK(bsBalancedComparisonBM)
+    ->Apply(latencyArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(twUnbalancedWorkloadBM)
-    ->Apply(nTasksAndThreadsArgs)
+BENCHMARK(twUnbalancedComparisonBM)
+    ->Apply(latencyArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(bsUnbalancedWorkloadBM)
-    ->Apply(nTasksAndThreadsArgs)
+BENCHMARK(bsUnbalancedComparisonBM)
+    ->Apply(latencyArgs)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
