@@ -10,8 +10,6 @@
 
 #include "helpers.h"
 
-using ThreadWeave::Index;
-
 // --- Global parameters
 
 constexpr Index kNumThreadArgs[]{1, 2, 3, 4};

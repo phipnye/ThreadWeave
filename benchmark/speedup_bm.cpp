@@ -10,11 +10,9 @@
 
 #include "helpers.h"
 
-using ThreadWeave::Index;
-
 // --- Global parameters
 
-constexpr Index kBaseIter{100'000'000};
+constexpr Index kBaseIter{20'000'000};
 constexpr Index kNumThreadArgs[]{1, 2, 3, 4};
 constexpr Index kNumTaskArgs[]{100, 1'000, 10'000};
 

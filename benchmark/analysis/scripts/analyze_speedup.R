@@ -1,38 +1,7 @@
-# Setup -------------------------------------------------------------------------------------------------
-
-library(ggplot2)
-library(jsonlite)
-library(data.table)
-library(rstudioapi)
-library(stringr)
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
 # Load and process data ---------------------------------------------------------------------------------
-
-json <- read_json("output/speedup_results.json")
-DT <- list2DF(json$benchmarks)
-setDT(DT)
-DT <- transpose(DT)
-setnames(
-  DT,
-  c(
-    "name",
-    "family_index",
-    "per_family_instance_index",
-    "run_name",
-    "run_type",
-    "repetitions",
-    "threads",
-    "aggregate_name",
-    "aggregate_unit",
-    "iterations",
-    "real_time",
-    "cpu_time",
-    "time_unit",
-    "label"
-  )
-)
-DT[, names(.SD) := lapply(.SD, unlist)]
+source("setup.R")
+json <- read_json(JSONS("speedup_results.json"))
+DT <- rbindlist(json$benchmarks, use.names = TRUE)
 
 # One row per (run, family) with columns for each aggregate stat (mean, median, cv, ...)
 stopifnot(all(DT[, time_unit == "ms"]))
@@ -80,7 +49,7 @@ ggplot(DT, aes(x = n_threads, y = speedup, color = balanced)) +
   theme_bw()
 
 ggsave(
-  "output/speedup_01_speedup_curves.png",
+  PLOTS("speedup_01_speedup_curves.png"),
   width = 3.5 * length(unique(DT[, n_tasks])),
   height = 4.5,
   dpi = 300
@@ -94,7 +63,7 @@ ggplot(DT, aes(x = n_threads, y = efficiency, color = balanced)) +
   geom_point() +
   facet_wrap(~n_tasks_lab) +
   scale_x_continuous(breaks = sort(unique(DT$n_threads))) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, NA)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
   labs(
     title = "Parallel Efficiency vs. Number of Threads",
     subtitle = "Efficiency = speedup / threads (100% = perfect scaling)",
@@ -105,7 +74,7 @@ ggplot(DT, aes(x = n_threads, y = efficiency, color = balanced)) +
   theme_bw()
 
 ggsave(
-  "output/speedup_02_efficiency_curves.png",
+  PLOTS("speedup_02_efficiency_curves.png"),
   width = 3.5 * length(unique(DT[, n_tasks])),
   height = 4.5,
   dpi = 300

@@ -13,7 +13,12 @@ add_executable(LatencyBenchmark latency_bm.cpp)
 target_include_directories(LatencyBenchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(LatencyBenchmark PRIVATE ThreadWeave benchmark::benchmark)
 
-# --- Bshoshany thread pool for comparison
+# --- Performance benchmarks
+add_executable(SortPerformanceBenchmark sortPerformance_bm.cpp)
+target_include_directories(SortPerformanceBenchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(SortPerformanceBenchmark PRIVATE ThreadWeave benchmark::benchmark)
+
+# --- Comparison dependencies
 
 include(FetchContent)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
@@ -29,3 +34,6 @@ FetchContent_MakeAvailable(bshoshany_thread_pool)
 add_library(BS_thread_pool INTERFACE)
 target_include_directories(BS_thread_pool INTERFACE ${bshoshany_thread_pool_SOURCE_DIR}/include)
 target_link_libraries(ComparisonsBenchmark PRIVATE BS_thread_pool)
+
+find_package(TBB REQUIRED COMPONENTS tbb)
+target_link_libraries(SortPerformanceBenchmark PRIVATE TBB::tbb)
