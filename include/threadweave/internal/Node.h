@@ -1,7 +1,7 @@
 #ifndef TW_NODE_H
 #define TW_NODE_H
 
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <concepts>

@@ -5,7 +5,7 @@
 #include <threadweave/Future.h>
 #include <threadweave/NodeAllocator.h>
 #include <threadweave/VyukovQueue.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <cstddef>
@@ -28,8 +28,6 @@ namespace ThreadWeave {
  * Deques with the capability for threads to steal tasks from one another.
  */
 class ThreadPool {
-  using FutureNodeBase = Internal::FutureNodeBase;
-
   // Thread-local information that keeps track of whether the thread submitting
   // a task is a worker in which case it can write directly to its own work
   // deque that must follow SPMC semantics
@@ -48,10 +46,10 @@ class ThreadPool {
   // --- Data members
 
   // Worker-specific deques that other workers can steal from
-  std::unique_ptr<ChaseLevDeque<FutureNodeBase*>[]> workerDeques_;
+  std::unique_ptr<ChaseLevDeque<Internal::TaskBase*>[]> workerDeques_;
 
   // Global MPSC queue for storing tasks submitted by non-workers
-  VyukovQueue<FutureNodeBase*> injectionQueue_;
+  VyukovQueue<Internal::TaskBase*> injectionQueue_;
 
   // Threads
   std::vector<std::thread> workers_;
@@ -124,11 +122,11 @@ class ThreadPool {
   bool tryExecuteTask(Index threadId);
 
   /**
-   * Execute a task stored in a future base node pointer, set its status to
-   * active, and then decrements counters with proper ordering
-   * @param task a pointer to a future base node with a task to execute
+   * Execute a task, set its status to active, and then decrement counters with
+   * proper ordering
+   * @param task a pointer to a task to execute
    */
-  void executeTask(FutureNodeBase* task);
+  void executeTask(Internal::TaskBase* task);
 
   /**
    * Helper to retrieve the current state values
@@ -159,15 +157,24 @@ class ThreadPool {
 
  public:
   /**
-   * Helper function for a thread to wait on a future node result to be ready.
-   * If the caller is a worker thread in a thread pool, it continues executing
-   * work until results are ready. Otherwise, non-workers fallback to atomic
-   * parking behavior.
-   * @param node a pointer to the futrue node to wait on
+   * Helper function for a thread to wait on a task result to be ready. If the
+   * caller is a worker thread in a thread pool, it continues executing work
+   * until results are ready. Otherwise, non-workers fallback to atomic parking
+   * behavior.
+   * @param task a pointer to a task to wait on
    */
-  static void awaitNode(FutureNodeBase* node);
+  static void awaitTask(Internal::TaskBase* task);
 
  private:
+  /**
+   * Helper entry point for tasks submitted to the pool
+   * @tparam ReturnType type of the value returned from the submitted task
+   * @tparam Callable a bound task callable
+   * @param base a pointer to a task base object for the submitted task
+   */
+  template <typename ReturnType, typename Callable>
+  static void taskEntryPoint(Internal::TaskBase* base);
+
   /**
    * Helper RAII guard for acquiring and releasing injection key
    */
@@ -192,93 +199,44 @@ template <typename F, typename... Args>
 auto ThreadPool::submit(F&& f, Args&&... args)
     -> Future<std::invoke_result_t<F, Args...>> {
   using ReturnType = std::invoke_result_t<F, Args...>;
-  using Node = Internal::FutureNode<ReturnType>;
-  using Allocator = Internal::NodeAllocator<Node>;
+  using TaskType = Internal::Task<ReturnType>;
+  using Allocator = Internal::NodeAllocator<TaskType>;
   static_assert(!std::is_reference_v<ReturnType>,
                 "Reference return types are not supported directly. Return a "
                 "pointer or std::reference_wrapper instead.");
 
   // Package the functions and arguments into a lambda
-  auto boundTask{
+  auto callable{
       [f = std::forward<F>(f), ... args = std::forward<Args>(args)]() mutable {
         return std::invoke(std::move(f), std::move(args)...);
       }};
 
-  // Future node uses an internal buffer to store function payload that is
-  // aligned using max_align_t, ensure the passed task doesn't violate size
-  // constraints for this buffer
-  using BoundTask = decltype(boundTask);
+  // Task uses an internal buffer to store function payload that is aligned
+  // using max_align_t, ensure the passed task doesn't violate size constraints
+  // for this buffer
+  using Callable = decltype(callable);
   static_assert(
-      sizeof(BoundTask) <= Node::kPayloadSize,
-      "Task arguments exceed the FutureNode's internal buffer limit. "
-      "Consider reducing the size of passed arguments or define the macro "
-      "TW_PAYLOAD_SIZE to increase the size of the internal buffer.");
-  static_assert(alignof(BoundTask) <= alignof(std::max_align_t),
+      sizeof(Callable) <= TaskType::kCallableStorageSize,
+      "Task arguments exceed the Tasks's internal buffer limit. Consider "
+      "reducing the size of passed arguments or define the macro "
+      "TW_CALLABLE_STORAGE_SIZE to increase the size of the internal buffer.");
+  static_assert(alignof(Callable) <= alignof(std::max_align_t),
                 "Task's captured state requires stricter alignment than the "
-                "FutureNode payload buffer guarantees.");
+                "Task callable storage buffer guarantees.");
 
-  // Retrive an allocation for a node (note deallocation is taken care of by the
-  // future's destructor or the lambda where release() is called)
-  Node* const taskNode{Allocator::allocate()};
+  // Retrive an allocation for a task (note deallocation is taken care of by the
+  // future's destructor or the lambda where releaseReference() is called)
+  TaskType* const task{Allocator::allocate()};
 
-  // Construct the callable object directly inside the node's byte payload
+  // Construct the callable object directly inside the task's callable storage
   static_assert(
-      std::is_nothrow_move_constructible_v<BoundTask>,
+      std::is_nothrow_move_constructible_v<Callable>,
       "BoundTask's move constructor may throw and cause a memory leak");
-  ::new (static_cast<void*>(taskNode->payload)) BoundTask{std::move(boundTask)};
+  ::new (static_cast<void*>(task->callableStorage_))
+      Callable{std::move(callable)};
 
   // Bind the execution layout
-  taskNode->execute = [](FutureNodeBase* const base) {
-    // Re-cast back to a node pointer
-    Node* const tskNode{static_cast<Node*>(base)};
-    TW_ASSERT((reinterpret_cast<std::uintptr_t>(tskNode->payload) %
-               alignof(BoundTask)) == 0,
-              "FutureNode payload buffer misaligned for task target type!");
-
-    // Per the standard, a new object is only "transparently replaceable"
-    // (meaning you can keep using the old pointer without UB) if all of the
-    // following conditions are met:
-    // 1. The new object is allocated at the exact same address as the old one.
-    // 2. The new object is the exact same type as the old one (ignoring
-    // cv-qualifiers).
-    // 3. The type does not contain any const-qualified fields (at any level of
-    // nesting).
-    // 4. The type does not contain any reference fields (at any level of
-    // nesting).
-    // 5. Both the old and new objects are the most-derived object (i.e., you
-    // aren't replacing a base class subobject of a larger class).
-    // Payload is of type std::byte[] and decays to a byte* thus launder is
-    // necessary here to prevent violating 2.
-    auto* const bndTask{
-        std::launder(reinterpret_cast<BoundTask*>(tskNode->payload))};
-
-    if constexpr (std::is_void_v<ReturnType>) {
-      try {
-        (*bndTask)();
-      } catch (...) {
-        tskNode->exception = std::current_exception();
-      }
-    } else {
-      try {
-        ::new (static_cast<void*>(tskNode->resultBuffer))
-            ReturnType{(*bndTask)()};
-        tskNode->hasResult = true;  // helps track need to call destructor
-      } catch (...) {
-        tskNode->exception = std::current_exception();
-      }
-    }
-
-    // Explicitly clean up the bound lambda and arguments and then notify thread
-    // of completion
-    bndTask->~BoundTask();
-    tskNode->notify();
-
-    // Decrement node's internal refernce count and deallocate node if caller is
-    // last one holding a reference
-    if (tskNode->release()) {
-      Allocator::deallocate(tskNode);
-    }
-  };
+  task->execute_ = &ThreadPool::taskEntryPoint<ReturnType, Callable>;
 
   // Increment both task counters (note sequential consistency synchronizes with
   // worker loop and prevents store-load reordering that could cause a
@@ -299,14 +257,68 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     // If thread submitting task is a worker, push the task directly to its own
     // work deque
     TW_ASSERT(workerId >= 0 && workerId < nThreads_, "Out of bounds threadId");
-    workerDeques_[workerId].push(taskNode);
+    workerDeques_[workerId].push(task);
   } else {
     // Otherwise, push the task to the global injection queue that a worker will
     // later take and store in its own Chase Lev Deque
-    injectionQueue_.push(taskNode);
+    injectionQueue_.push(task);
   }
 
-  return Future<ReturnType>{taskNode};
+  return Future<ReturnType>{task};
+}
+template <typename ReturnType, typename Callable>
+void ThreadPool::taskEntryPoint(Internal::TaskBase* const base) {
+  using TaskType = Internal::Task<ReturnType>;
+  using Allocator = Internal::NodeAllocator<TaskType>;
+
+  TaskType* const task{static_cast<TaskType*>(base)};
+  TW_ASSERT((reinterpret_cast<std::uintptr_t>(task->callableStorage_) %
+             alignof(Callable)) == 0,
+            "Callable storage buffer misaligned for task target type");
+
+  // Per the standard, a new object is only "transparently replaceable"
+  // (meaning you can keep using the old pointer without UB) if all of the
+  // following conditions are met:
+  // 1. The new object is allocated at the exact same address as the old one.
+  // 2. The new object is the exact same type as the old one (ignoring
+  // cv-qualifiers).
+  // 3. The type does not contain any const-qualified fields (at any level of
+  // nesting).
+  // 4. The type does not contain any reference fields (at any level of
+  // nesting).
+  // 5. Both the old and new objects are the most-derived object (i.e., you
+  // aren't replacing a base class subobject of a larger class).
+  // callableStorage is of type std::byte[] and decays to a byte* thus launder
+  // is necessary here to prevent violating 2.
+  auto* const callable{
+      std::launder(reinterpret_cast<Callable*>(task->callableStorage_))};
+
+  if constexpr (std::is_void_v<ReturnType>) {
+    try {
+      (*callable)();
+    } catch (...) {
+      task->exception_ = std::current_exception();
+    }
+  } else {
+    try {
+      ::new (static_cast<void*>(task->resultStorage_))
+          ReturnType{(*callable)()};
+      task->hasResult_ = true;  // helps track need to call destructor
+    } catch (...) {
+      task->exception_ = std::current_exception();
+    }
+  }
+
+  // Explicitly clean up the bound lambda and arguments and then notify thread
+  // of completion
+  callable->~Callable();
+  task->notify();
+
+  // Decrement task's internal refernce count and deallocate if caller is
+  // last one holding a reference
+  if (task->releaseReference()) {
+    Allocator::deallocate(task);
+  }
 }
 
 }  // namespace ThreadWeave

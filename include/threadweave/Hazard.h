@@ -1,7 +1,7 @@
 #ifndef TW_HAZARD_H
 #define TW_HAZARD_H
 
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <thread>

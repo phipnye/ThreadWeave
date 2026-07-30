@@ -1,7 +1,7 @@
 #ifndef TW_CHASE_LEV_DEQUE_H
 #define TW_CHASE_LEV_DEQUE_H
 
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <iostream>

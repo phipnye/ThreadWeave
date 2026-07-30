@@ -2,9 +2,9 @@
 #define TW_MICHAEL_SCOTT_QUEUE_H
 
 #include <threadweave/Hazard.h>
-#include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/Node.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <optional>

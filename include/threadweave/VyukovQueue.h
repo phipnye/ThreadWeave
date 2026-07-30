@@ -1,9 +1,9 @@
 #ifndef TW_VYUKOV_QUEUE_H
 #define TW_VYUKOV_QUEUE_H
 
-#include <threadweave/Node.h>
 #include <threadweave/NodeAllocator.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/Node.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <optional>

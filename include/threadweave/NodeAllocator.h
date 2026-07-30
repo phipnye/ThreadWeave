@@ -2,8 +2,8 @@
 #define TW_NODE_ALLOCATOR_H
 
 #include <threadweave/Hazard.h>
-#include <threadweave/Node.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/Node.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <memory>
