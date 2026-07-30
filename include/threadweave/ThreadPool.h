@@ -8,7 +8,6 @@
 #include <threadweave/utils.h>
 
 #include <atomic>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -134,8 +133,8 @@ class ThreadPool {
   /**
    * Helper to retrieve the current state values
    * @param order Memory ordering to use on the load
-   * @return the current number of non-executing queued tasks and the pool
-   * stop values
+   * @return the current state, number of non-executing queued tasks, and the
+   * pool stop values
    */
   std::tuple<std::uint64_t, std::uint64_t, bool> getState(
       std::memory_order order) const noexcept;
@@ -232,6 +231,9 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   taskNode->execute = [](FutureNodeBase* const base) {
     // Re-cast back to a node pointer
     Node* const tskNode{static_cast<Node*>(base)};
+    TW_ASSERT((reinterpret_cast<std::uintptr_t>(tskNode->payload) %
+               alignof(BoundTask)) == 0,
+              "FutureNode payload buffer misaligned for task target type!");
 
     // Per the standard, a new object is only "transparently replaceable"
     // (meaning you can keep using the old pointer without UB) if all of the
@@ -296,7 +298,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   if (currentPool == this) {
     // If thread submitting task is a worker, push the task directly to its own
     // work deque
-    assert(workerId >= 0 && workerId < nThreads_ && "Out of bounds threadId");
+    TW_ASSERT(workerId >= 0 && workerId < nThreads_, "Out of bounds threadId");
     workerDeques_[workerId].push(taskNode);
   } else {
     // Otherwise, push the task to the global injection queue that a worker will

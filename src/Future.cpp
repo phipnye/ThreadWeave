@@ -1,4 +1,5 @@
 #include <threadweave/Future.h>
+#include <threadweave/utils.h>
 
 namespace ThreadWeave::Internal {
 
@@ -7,7 +8,9 @@ bool FutureNodeBase::isReady() const noexcept {
 }
 
 bool FutureNodeBase::release() noexcept {
-  return refCount.fetch_sub(1, MemoryOrder::acq_rel) == 1;
+  const auto oldRefCnt{refCount.fetch_sub(1, MemoryOrder::acq_rel)};
+  TW_ASSERT(oldRefCnt > 0, "Double-release detected in FutureNodeBase");
+  return oldRefCnt == 1;
 }
 
 void FutureNodeBase::wait() noexcept {
@@ -36,4 +39,4 @@ void FutureNodeBase::notify() noexcept {
   }
 }
 
-}  // namespace ThreadWeave
+}  // namespace ThreadWeave::Internal

@@ -76,3 +76,6 @@ Testing/
 
 # Perf data
 perf.data
+
+# npx
+repomix-output.xml

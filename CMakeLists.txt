@@ -6,7 +6,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-
 # --- Compiler flags
 set(COMPILER_FLAGS
         -Wall
@@ -36,22 +35,33 @@ target_sources(ThreadWeave
         BASE_DIRS include
         FILES
         include/threadweave/ChaseLevDeque.h
-        include/threadweave/utils.h
         include/threadweave/Hazard.h
-        include/threadweave/Node.h
         include/threadweave/MichaelScottQueue.h
+        include/threadweave/Node.h
         include/threadweave/NodeAllocator.h
-        include/threadweave/TreiberStack.h
         include/threadweave/ThreadPool.h
+        include/threadweave/TreiberStack.h
         include/threadweave/VyukovQueue.h
+        include/threadweave/utils.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
+
+# --- Macros
+
+# Remove debug symbol in release mode
+target_compile_definitions(ThreadWeave PUBLIC $<$<CONFIG:Release>:TW_NDEBUG>)
 
 # Define cache line size instead of relying on std::hardware_destructive_interference_size
 target_compile_definitions(ThreadWeave PUBLIC TW_CACHE_LINE_SIZE=64)
 
 # Makes every atomic operation sequentially consistent
-#target_compile_definitions(ThreadWeave PUBLIC TW_DEBUG_SEQ_CST)
+# target_compile_definitions(ThreadWeave PUBLIC TW_SEQ_CST)
+
+# Sets the payload buffer size for holding function payloads
+# target_compile_definitions(ThreadWeave PUBLIC TW_PAYLOAD_SIZE=128)
+
+# Set the maximum number of threads an application can expect to use for managing hazard pointer resource
+# target_compile_definitions(ThreadWeave PUBLIC TW_MAX_THREADS=64)
 
 # --- Third-party dependencies
 

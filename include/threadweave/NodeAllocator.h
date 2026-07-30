@@ -30,8 +30,16 @@ class NodeAllocator {
     Node* allocateBlock();
 
    public:
-    std::atomic<Node*> freeHead_{nullptr};  // free nodes
-    std::atomic<Node*> saveHead_{nullptr};  // nodes that can't be reused yet
+    // Free nodes
+    alignas(kCacheLineSize) std::atomic<Node*> freeHead_{nullptr};
+
+    // Nodes that can't be reused yet
+    alignas(kCacheLineSize) std::atomic<Node*> saveHead_{nullptr};
+
+#ifndef TW_NDEBUG
+    // Keep track of the number of allocations to make sure there are no leaks
+    alignas(kCacheLineSize) mutable std::atomic<Index> nAllocs_{0};
+#endif
 
     // Pre-allocate a fixed size of nodes
     GlobalNodeCaches();
@@ -50,34 +58,14 @@ class NodeAllocator {
     Node* askForNode();
 
     // Save batch of nodes for later
-    void pushSave(Node* batchHead) {
-      pushBatch(saveHead_, batchHead);
-    }
+    void pushSave(Node* batchHead);
 
     // Free batch of nodes to free list
-    void pushFree(Node* batchHead) {
-      pushBatch(freeHead_, batchHead);
-    }
+    void pushFree(Node* batchHead);
 
    private:
     // Push a batch of nodes to the head of a global cache
-    static void pushBatch(std::atomic<Node*>& cacheHead, Node* batchHead) {
-      if (!batchHead) {
-        return;
-      }
-
-      // Retrieve tail of the batch
-      Node* batchTail{batchHead};
-
-      while (batchTail->_internal.next) {
-        batchTail = batchTail->_internal.next;
-      }
-
-      batchTail->_internal.next = cacheHead.load(MemoryOrder::relaxed);
-      while (!cacheHead.compare_exchange_weak(batchTail->_internal.next,
-                                              batchHead, MemoryOrder::release,
-                                              MemoryOrder::relaxed));
-    }
+    static void pushBatch(std::atomic<Node*>& cacheHead, Node* batchHead);
   };
 
   // Retrieve pointer to the GlobalNodeCaches singleton
@@ -159,6 +147,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
   // Allocate a full block of nodes (we do this to minimize the number of
   // times malloc has to be called)
   Node* block{new Node[NodesPerBlock]};
+  TW_DEBUG_ONLY(nAllocs_.fetch_add(1, MemoryOrder::relaxed););
 
   // Reset performs a "true" value initialization of the nodes
   for (Index i{0}; i < NodesPerBlock; ++i) {
@@ -231,13 +220,21 @@ NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() {
     }
   }
 
+  TW_DEBUG_ONLY(Index nDealloc{0};);
+
   // Finally call delete on all of the block starts
   while (blockStarts) {
     // ReSharper disable once CppLocalVariableMayBeConst
     Node* const curr{blockStarts};
     blockStarts = blockStarts->_internal.next;
     delete[] curr;
+
+    TW_DEBUG_ONLY(++nDealloc;);
   }
+
+  TW_ASSERT(nAllocs_.load(MemoryOrder::relaxed) == nDealloc,
+            "Number of deleted block heads does not match the number of "
+            "allocated block head.");
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -302,6 +299,38 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
   // Fallback to OS allocation (this should happen rarely since we allocate
   // blocks of nodes at a time)
   return allocateBlock();
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
+void NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::pushSave(
+    Node* const batchHead) {
+  pushBatch(saveHead_, batchHead);
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
+void NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::pushFree(
+    Node* const batchHead) {
+  pushBatch(freeHead_, batchHead);
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
+void NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::pushBatch(
+    std::atomic<Node*>& cacheHead, Node* const batchHead) {
+  if (!batchHead) {
+    return;
+  }
+
+  // Retrieve tail of the batch
+  Node* batchTail{batchHead};
+
+  while (batchTail->_internal.next) {
+    batchTail = batchTail->_internal.next;
+  }
+
+  batchTail->_internal.next = cacheHead.load(MemoryOrder::relaxed);
+  while (!cacheHead.compare_exchange_weak(batchTail->_internal.next, batchHead,
+                                          MemoryOrder::release,
+                                          MemoryOrder::relaxed));
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>

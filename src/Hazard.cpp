@@ -32,11 +32,20 @@ ThreadHazardManager::ThreadHazardManager() : poolIdx_{kMaxThreads} {
 ThreadHazardManager::~ThreadHazardManager() {
   // Clear the hazard pointers before clearing the ID so other threads can use
   // this thread slot
+  TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
+            "Attempting to destroy uninitialized manager slot");
   auto& [id, ptrs]{slotsPool[poolIdx_]};
 
   for (auto& ptr : ptrs) {
     ptr.store(nullptr, MemoryOrder::relaxed);
   }
+
+#ifndef TW_NDEBUG
+  for (const auto& ptr : ptrs) {
+    TW_ASSERT(ptr.load(MemoryOrder::relaxed) == nullptr,
+              "Hazard pointer failed to clear during slot release");
+  }
+#endif
 
   id.store(std::thread::id{}, MemoryOrder::release);
 }
@@ -45,10 +54,18 @@ ThreadHazardManager::~ThreadHazardManager() {
 // retrieves an unprotected reference and likely will use it to store a new
 // memory address
 std::atomic<void*>& ThreadHazardManager::getPointer(const Index idx) noexcept {
+  TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
+            "Invalid or uninitialized poolIdx_ in ThreadHazardManager");
+  TW_ASSERT(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
+            "Hazard slot index out of bounds");
   return slotsPool[poolIdx_].ptr[idx];
 }
 
 bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) noexcept {
+  if (!nodePtr) [[unlikely]] {
+    return false;
+  }
+
   for (const auto& [id, ptrs] : slotsPool) {
     // Empty id indicates no use
     if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {

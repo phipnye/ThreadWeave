@@ -129,8 +129,8 @@ TEST(ChaseLevDequeTests, StealDuringExpandStress) {
   stop.store(true, MemoryOrder::release);
   thieves.clear();
 
-#ifndef NDEBUG
-  const auto nExpands{dq.debugExpandCnt.load(MemoryOrder::relaxed)};
+#ifndef TW_NDEBUG
+  const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
   std::println("# of expansions = {}", nExpands);
   ASSERT_GT(nExpands, 0) << "No expansion occurred — thieves may be outpacing "
                             "push; reduce nThieves";
@@ -164,8 +164,8 @@ TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
   stop.store(true, MemoryOrder::release);
   thieves.clear();
 
-#ifndef NDEBUG
-  const auto nExpands{dq.debugExpandCnt.load(MemoryOrder::relaxed)};
+#ifndef TW_NDEBUG
+  const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
 
   if (nExpands != 0) {
     std::println("# of expansions = {}", nExpands);

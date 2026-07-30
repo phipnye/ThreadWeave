@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <concepts>
+#include <memory>
 #include <new>
 #include <type_traits>
 
@@ -38,7 +39,7 @@ void resetValue(T& value) noexcept {
     value = T{};
   } else {
     value.~T();
-    ::new (&value) T{};
+    ::new (std::addressof(value)) T{};
   }
 }
 

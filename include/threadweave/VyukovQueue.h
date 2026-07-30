@@ -59,7 +59,7 @@ template <typename T>
            std::is_nothrow_move_constructible_v<T>)
 VyukovQueue<T>::VyukovQueue() {
   // Allocate a dummy node and point the head and tail at the dummy
-  Node* dummy{Allocator::allocate()};
+  Node* const dummy{Allocator::allocate()};
   tail_.store(dummy, MemoryOrder::relaxed);
   head_ = dummy;
 }
@@ -80,7 +80,8 @@ template <typename T>
            std::is_nothrow_move_constructible_v<T>)
 void VyukovQueue<T>::push(T data) {
   // Construct new node to store data
-  Node* pushNode{Allocator::allocate()};
+  Node* const pushNode{Allocator::allocate()};
+  TW_ASSERT(pushNode != nullptr, "Allocator returned null node in push()");
   pushNode->data = std::move(data);
 
   // Append the new node to the prior tail

@@ -131,6 +131,8 @@ class HazardGuard {
 
 template <HazardSlot slot>
 HazardGuard<slot>::~HazardGuard() {
+  static_assert(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
+                "HazardGuard slot index out of bounds");
   std::atomic<void*>& hp{getThreadHazardPointer(idx)};
   hp.store(nullptr, MemoryOrder::release);
 }
@@ -139,6 +141,9 @@ template <HazardSlot slot>
 template <typename T>
 T* HazardGuard<slot>::acquirePointerWithHazard(
     const std::atomic<T*>& atomic) const {
+  static_assert(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
+                "HazardGuard slot index out of bounds");
+
   // Retrieve current thread's `idx`th hazard pointer
   std::atomic<void*>& hp{getThreadHazardPointer(idx)};
 

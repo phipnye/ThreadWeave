@@ -5,7 +5,6 @@
 #include <threadweave/NodeAllocator.h>
 #include <threadweave/utils.h>
 
-#include <cassert>
 #include <cstddef>
 #include <exception>
 #include <new>
@@ -125,7 +124,7 @@ class Future {
    */
   ~Future();
 
-  // Only support move-semantics
+  // Prevent copies
   Future(const Future&) = delete;
   Future& operator=(const Future&) = delete;
 
@@ -175,7 +174,9 @@ class Future {
 };
 
 template <typename T>
-Future<T>::Future(FutureNode* node) : node_{node} {}
+Future<T>::Future(FutureNode* const node) : node_{node} {
+  TW_ASSERT(node != nullptr, "Future ctor received a null node");
+}
 
 template <typename T>
 Future<T>::~Future() {
@@ -198,17 +199,21 @@ Future<T>& Future<T>::operator=(Future&& other) noexcept {
 
 template <typename T>
 void Future<T>::wait() noexcept {
-  assert(node_ && "Waiting on null node");
+  TW_ASSERT(node_ != nullptr,
+            "Cannot call wait() on an uninitialized, invalid, or "
+            "already-consumed Future");
   Internal::helpWait(node_);
 }
 
 template <typename T>
 T Future<T>::get() {
+  TW_ASSERT(node_ != nullptr,
+            "Cannot call get() on an uninitialized, invalid, or "
+            "already-consumed Future");
   wait();
 
   // Steal the future node
-  assert(node_ && "Called get on a null future node");
-  FutureNode* node{std::exchange(node_, nullptr)};
+  FutureNode* const node{std::exchange(node_, nullptr)};
 
   // Rethrow any stored exceptions
   if (node->exception) {
@@ -222,6 +227,10 @@ T Future<T>::get() {
     retire(node);
     return;  // silences IDE
   } else {
+    TW_ASSERT(
+        node->hasResult,
+        "Future::get() called but node has no result or exception stored");
+
     // Under the C++ standard (specifically [basic.life]), a new object is
     // only "transparently replaceable" (meaning you can keep using the old
     // pointer without UB) if all of the following conditions are met:
@@ -249,7 +258,7 @@ T Future<T>::get() {
 }
 
 template <typename T>
-void Future<T>::retire(FutureNode* node) {
+void Future<T>::retire(FutureNode* const node) {
   if (node && node->release()) {
     Allocator::deallocate(node);
   }

@@ -92,15 +92,16 @@ template <typename T>
 void TreiberStack<T>::push(T data) {
   // Grab raw, recycled node memory from the block allocator (may very rarely
   // perform a heap allocation which is not lock-free)
-  Node* newNode{Allocator::allocate()};
+  Node* const pushNode{Allocator::allocate()};
+  TW_ASSERT(pushNode != nullptr, "Allocator returned null node in push()");
 
   // Move data into the node
-  newNode->data = std::move(data);
+  pushNode->data = std::move(data);
 
   // Push new node onto the stack
-  newNode->next = head_.load(MemoryOrder::relaxed);
+  pushNode->next = head_.load(MemoryOrder::relaxed);
   while (!head_.compare_exchange_weak(
-      newNode->next, newNode, MemoryOrder::release, MemoryOrder::relaxed)) {}
+      pushNode->next, pushNode, MemoryOrder::release, MemoryOrder::relaxed)) {}
 }
 
 template <typename T>

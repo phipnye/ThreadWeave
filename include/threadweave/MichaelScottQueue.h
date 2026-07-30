@@ -74,6 +74,8 @@ template <typename T>
 MichaelScottQueue<T>::MichaelScottQueue() {
   // Acquire a raw node block for the initial dummy node
   Node* dummy{Allocator::allocate()};
+  TW_ASSERT(dummy != nullptr,
+            "Failed to allocate initial dummy node for MichaelScottQueue");
 
   // Point both head and tail to the dummy
   head_.store(dummy, MemoryOrder::relaxed);
@@ -85,6 +87,13 @@ template <typename T>
            std::is_nothrow_move_constructible_v<T>)
 MichaelScottQueue<T>::~MichaelScottQueue() {
   Node* head{head_.load(MemoryOrder::relaxed)};
+  TW_ASSERT(head != nullptr,
+            "Head pointer was null during MichaelScottQueue destruction");
+
+  // Verify no active hazard pointers exist for the head node during destruction
+  TW_ASSERT(!Internal::anyThreadsUsingNode(head),
+            "MichaelScottQueue destroyed while threads still hold hazard "
+            "pointers to its nodes!");
 
   while (head) {
     Node* curr{head};
@@ -98,14 +107,19 @@ template <typename T>
            std::is_nothrow_move_constructible_v<T>)
 void MichaelScottQueue<T>::push(T data) {
   // Construct new node to store data
-  Node* pushNode{Allocator::allocate()};
+  Node* const pushNode{Allocator::allocate()};
+  TW_ASSERT(pushNode != nullptr, "Allocator returned null node in push()");
   pushNode->data = std::move(data);
 
   while (true) {
     // Use an RAII guard for clearing hazard pointer when held tail pointer is
     // no longer in use
     const Internal::HazardGuard<Internal::HazardSlot::Queue0> tailGuard{};
+
+    // TODO: Can throw here which would leak pushNode
     Node* tailPtr{tailGuard.acquirePointerWithHazard(tail_)};
+    TW_ASSERT(tailPtr != nullptr,
+              "Tail pointer in MichaelScottQueue cannot be null");
     std::atomic<Node*>& nextAtomic{tailPtr->next};
     Node* nextPtr{nextAtomic.load(MemoryOrder::acquire)};
 
@@ -175,6 +189,8 @@ std::optional<T> MichaelScottQueue<T>::pop() {
 
       // Store the old dummy node so we can retire it
       oldDummy = headPtr;
+      TW_ASSERT(oldDummy != nullptr,
+                "oldDummy cannot be null after successful pop CAS");
       break;
     }
   }

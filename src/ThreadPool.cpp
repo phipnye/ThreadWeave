@@ -4,7 +4,6 @@
 #include <threadweave/utils.h>
 
 #include <atomic>
-#include <cassert>
 #include <cstddef>
 #include <memory>
 #include <random>
@@ -24,7 +23,11 @@ ThreadPool::ThreadPool(const Index nThreads)
       nParkedWorkers_{0},
       injectionKey_{} {
   // Fill pool with worker threads
-  assert(nThreads > 0 && "Number of threads must be positive");
+  TW_ASSERT(nThreads > 0, "Number of threads must be positive");
+  TW_ASSERT(nThreads <= Internal::kMaxThreads,
+            "Number of threads exceeds max number of threads. Consider "
+            "defining TW_MAX_THREADS with a larger value or decreasing the "
+            "number of threads.");
   workers_.reserve(nThreads);
 
   try {
@@ -55,6 +58,16 @@ ThreadPool::~ThreadPool() {
   for (auto& t : workers_) {
     t.join();
   }
+
+#ifndef TW_NDEBUG
+  {
+    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+    TW_ASSERT(_nQueued == 0,
+              "Thread pool destroyed with unexecuted queued tasks remaining");
+    TW_ASSERT(nPendingTasks_.load(MemoryOrder::relaxed) == 0,
+              "Thread pool destroyed with pending tasks remaining");
+  }
+#endif
 }
 
 void ThreadPool::workerLoop(const Index threadId) {
@@ -130,13 +143,18 @@ void ThreadPool::workerLoop(const Index threadId) {
 }
 
 void ThreadPool::awaitNode(FutureNodeBase* const node) {
+  TW_ASSERT(node != nullptr, "Cannot await a null FutureNode");
+
   // Non-worker: Fall back to standard atomic parking
   if (currentPool == nullptr) {
     node->wait();
     return;
   }
 
-  // Worker: Execute tasks until the target node completes
+  TW_ASSERT(workerId >= 0 && workerId < currentPool->nThreads_,
+            "Invalid workerId for current pool");
+
+  // Worker executes tasks until the target node completes
   while (!node->isReady()) {
     // Yield if failed to find a task to execute
     if (!currentPool->tryExecuteTask(workerId)) {
@@ -194,6 +212,15 @@ bool ThreadPool::tryExecuteTask(const Index threadId) {
 }
 
 void ThreadPool::executeTask(FutureNodeBase* const task) {
+  TW_ASSERT(task != nullptr, "Attempted to execute a null task node");
+
+#ifndef TW_NDEBUG
+  {
+    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+    TW_ASSERT(_nQueued > 0, "Executed task when queued task count was 0");
+  }
+#endif
+
   // Decrement queued count before execution (allows idle workers to unpark -
   // relaxed semantics are fine since no data guarantees required)
   decrementNumQueued(MemoryOrder::relaxed);
@@ -233,6 +260,18 @@ void ThreadPool::incrementNumQueued(const std::memory_order order) noexcept {
 }
 
 void ThreadPool::decrementNumQueued(const std::memory_order order) noexcept {
+#ifndef TW_NDEBUG
+  {
+    // If decrementNumQueued is called when nQueuedTasks == 0, bit underflow
+    // will corrupt the kStopMask bit (LSB), putting the thread pool into an
+    // irrecoverable state.
+    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+    TW_ASSERT(
+        _nQueued > 0,
+        "Underflow detected: decrementNumQueued called with 0 queued tasks");
+  }
+#endif
+
   state_.fetch_sub(kTaskUnit, order);
 }
 
