@@ -168,17 +168,18 @@ class alignas(Internal::kCacheLineSize) ChaseLevDeque {
    * Ensure single producer semantics are satisfied
    */
   void ensureSingleProducer() const {
-    const std::thread::id currentId{std::this_thread::get_id()};
-    std::thread::id expectedId{};
+    TW_DEBUG_ONLY(
+        const std::thread::id currentId{std::this_thread::get_id()};
+        std::thread::id expectedId{};
 
-    // First call records this thread as owner
-    if (ownerThreadId_.compare_exchange_strong(expectedId, currentId,
-                                               MemoryOrder::relaxed,
-                                               MemoryOrder::relaxed)) {
-    } else {
-      TW_ASSERT(expectedId == currentId,
-                "ChaseLevDeque SPMC violation: called from non-owner thread");
-    }
+        // First call records this thread as owner
+        if (ownerThreadId_.compare_exchange_strong(
+                expectedId, currentId, MemoryOrder::relaxed,
+                MemoryOrder::relaxed)) {} else {
+          TW_ASSERT(
+              expectedId == currentId,
+              "ChaseLevDeque SPMC violation: called from non-owner thread");
+        });
   }
 };
 

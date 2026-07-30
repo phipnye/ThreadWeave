@@ -220,15 +220,15 @@ NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() {
     }
   }
 
-  TW_DEBUG_ONLY(Index nDealloc{0};);
+#ifndef TW_NDEBUG
+  Index nDealloc{0};
+#endif
 
-  // Finally call delete on all of the block starts
   while (blockStarts) {
     // ReSharper disable once CppLocalVariableMayBeConst
     Node* const curr{blockStarts};
     blockStarts = blockStarts->_internal.next;
     delete[] curr;
-
     TW_DEBUG_ONLY(++nDealloc;);
   }
 
