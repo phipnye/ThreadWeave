@@ -17,7 +17,7 @@ namespace Internal {
 /**
  * Bridge function defined in ThreadPool.cpp to allow thread workers to continue
  * working without blocking waits while waiting for a result
- * @param task a pointer to the future node base to wait on
+ * @param task a pointer to the task to wait on
  */
 void helpWait(TaskBase* task) noexcept;
 
@@ -120,6 +120,7 @@ Future<T>::Future(Future&& other) noexcept
 template <typename T>
 Future<T>& Future<T>::operator=(Future&& other) noexcept {
   if (this != &other) {
+    // Before acquiring other task, mark this future as no longer using it
     retireTaskNode(task_);
     task_ = std::exchange(other.task_, nullptr);
   }
@@ -146,8 +147,6 @@ T Future<T>::get() {
             "Cannot call get() on an uninitialized, invalid, or "
             "already-consumed Future");
   wait();
-
-  // Steal the task
   Task* const task{std::exchange(task_, nullptr)};
 
   // Rethrow any stored exceptions

@@ -10,8 +10,7 @@
 #include <stdexcept>
 #include <thread>
 
-template <typename T>
-using Task = ThreadWeave::Internal::Task<T>;
+using namespace ThreadWeave;
 
 struct DestructorCounter {
   static inline int dtorCnt{0};
@@ -22,7 +21,7 @@ struct DestructorCounter {
 
 TEST(TaskTests, ResetDestroysObject) {
   DestructorCounter::dtorCnt = 0;
-  Task<DestructorCounter> task{};
+  Internal::Task<DestructorCounter> task{};
   new (task.resultStorage_) DestructorCounter{};
   task.hasResult_ = true;
   task.reset();
@@ -31,27 +30,27 @@ TEST(TaskTests, ResetDestroysObject) {
 }
 
 TEST(TaskTests, ResetRestoresInitialState) {
-  Task<int> task{};
+  Internal::Task<int> task{};
   task.exception_ = std::make_exception_ptr(std::runtime_error{"error"});
-  task.execute_ = [](ThreadWeave::Internal::TaskBase*) {};
+  task.execute_ = [](Internal::TaskBase*) {};
   task.releaseReference();
   task.reset();
   EXPECT_EQ(task.exception_, nullptr);
   EXPECT_EQ(task.execute_, nullptr);
   EXPECT_FALSE(task.isReady());
-  EXPECT_EQ(task.refCount_.load(ThreadWeave::MemoryOrder::relaxed), 2);
+  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 2);
 }
 
 TEST(TaskTests, ReleaseReferenceSignalsZero) {
-  Task<int> task{};
+  Internal::Task<int> task{};
   EXPECT_FALSE(task.releaseReference());
-  EXPECT_EQ(task.refCount_.load(ThreadWeave::MemoryOrder::relaxed), 1);
+  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 1);
   EXPECT_TRUE(task.releaseReference());
-  EXPECT_EQ(task.refCount_.load(ThreadWeave::MemoryOrder::relaxed), 0);
+  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 0);
 }
 
 TEST(TaskTests, WaitBlocksUntilNotify) {
-  Task<int> task{};
+  Internal::Task<int> task{};
   constexpr int val{42};
 
   std::thread worker{[&task] {
@@ -69,12 +68,12 @@ TEST(TaskTests, WaitBlocksUntilNotify) {
 }
 
 TEST(TaskTests, ConcurrentReleaseReferenceReturnsTrueOnce) {
-  auto* const task{new Task<int>{}};
+  auto* const task{new Internal::Task<int>{}};
   std::atomic<int> trueCount{0};
 
   auto worker{[&] {
     if (task->releaseReference()) {
-      trueCount.fetch_add(1, ThreadWeave::MemoryOrder::relaxed);
+      trueCount.fetch_add(1, MemoryOrder::relaxed);
     }
   }};
 
@@ -82,7 +81,7 @@ TEST(TaskTests, ConcurrentReleaseReferenceReturnsTrueOnce) {
   std::thread t2{worker};
   t1.join();
   t2.join();
-  EXPECT_EQ(trueCount.load(ThreadWeave::MemoryOrder::relaxed), 1);
+  EXPECT_EQ(trueCount.load(MemoryOrder::relaxed), 1);
   delete task;
 }
 
@@ -90,7 +89,7 @@ TEST(TaskTests, DestructorCleansResultWithoutReset) {
   DestructorCounter::dtorCnt = 0;
 
   {
-    Task<DestructorCounter> task{};
+    Internal::Task<DestructorCounter> task{};
     new (task.resultStorage_) DestructorCounter{};
     task.hasResult_ = true;
   }
@@ -99,7 +98,7 @@ TEST(TaskTests, DestructorCleansResultWithoutReset) {
 }
 
 TEST(TaskTests, VoidTaskSupport) {
-  Task<void> task{};
+  Internal::Task<void> task{};
   task.hasResult_ = true;
   task.reset();
   EXPECT_FALSE(task.hasResult_);
@@ -107,7 +106,7 @@ TEST(TaskTests, VoidTaskSupport) {
 
 TEST(TaskTests, WaitReturnsImmediatelyIfReady) {
   // Ensures wait doesn't block or hit state.wait() if already in ready state
-  Task<int> task{};
+  Internal::Task<int> task{};
   task.notify();
   task.wait();
   EXPECT_TRUE(task.isReady());
@@ -117,7 +116,7 @@ TEST(TaskTests, DestructorSkippedWhenHasResultIsFalse) {
   DestructorCounter::dtorCnt = 0;
 
   {
-    Task<DestructorCounter> task{};
+    Internal::Task<DestructorCounter> task{};
     task.hasResult_ = false;
   }
 
@@ -125,7 +124,7 @@ TEST(TaskTests, DestructorSkippedWhenHasResultIsFalse) {
 }
 
 TEST(TaskTests, StorageAlignmentMatchesConstraints) {
-  Task<double> task{};
+  Internal::Task<double> task{};
   const auto callableAddr{
       reinterpret_cast<std::uintptr_t>(task.callableStorage_)};
   const auto resultAddr{reinterpret_cast<std::uintptr_t>(task.resultStorage_)};
@@ -134,11 +133,11 @@ TEST(TaskTests, StorageAlignmentMatchesConstraints) {
 }
 
 TEST(TaskTests, ExecuteFunctionPointerInvocation) {
-  Task<int> task{};
+  Internal::Task<int> task{};
   constexpr int val{42};
 
-  task.execute_ = [](ThreadWeave::Internal::TaskBase* base) {
-    auto* const self{static_cast<Task<int>*>(base)};
+  task.execute_ = [](Internal::TaskBase* base) {
+    auto* const self{static_cast<Internal::Task<int>*>(base)};
     new (self->resultStorage_) int{val};
     self->hasResult_ = true;
     self->notify();
@@ -151,7 +150,7 @@ TEST(TaskTests, ExecuteFunctionPointerInvocation) {
 }
 
 TEST(TaskTests, ExceptionPropagation) {
-  Task<int> task{};
+  Internal::Task<int> task{};
 
   try {
     throw std::runtime_error{"Test error"};

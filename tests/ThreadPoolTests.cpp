@@ -1,7 +1,7 @@
-#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
+#include <threadweave/internal/utils.h>
 
 #include <bitset>
 #include <chrono>
@@ -11,11 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-using ThreadWeave::ThreadPool;
-namespace MemoryOrder = ThreadWeave::MemoryOrder;
-
-template <typename T>
-using Future = ThreadWeave::Future<T>;
+using namespace ThreadWeave;
 
 // Try submitting just a single simple task
 TEST(ThreadPoolTests, SingleTask) {

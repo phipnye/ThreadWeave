@@ -25,11 +25,12 @@ enum class HazardSlot : Index {
  * macro.
  */
 class ThreadHazardManager {
-  // Pool of thread slots and their associated IDs
   struct ThreadSlots {
     std::atomic<std::thread::id> id;
     std::atomic<void*> ptr[static_cast<Index>(HazardSlot::COUNT)];
   };
+
+  // Pool of thread slots and their associated IDs
   static inline ThreadSlots slotsPool[kMaxThreads]{};
 
   // --- Data members
@@ -155,13 +156,18 @@ T* HazardGuard<slot>::acquirePointerWithHazard(
   // Memory allocator does not free heap memory until the end of the program,
   // thus our logic here is sound from the "pointer zapping" UB issue
   do {
-    // It's important the following operations occur in order and thus
-    // sequential consistency is applied to make sure the store-load occurs in
-    // program order globally
-    // https://stackoverflow.com/questions/67693687/possible-orderings-with-memory-order-seq-cst-and-memory-order-release
     tmp = node;
-    hp.store(tmp, MemoryOrder::seq_cst);
-    node = atomic.load(MemoryOrder::seq_cst);
+    hp.store(tmp, MemoryOrder::release);
+
+    // Pairs with the seq_cst fence in ThreadHazardManager::isPointerInUse.
+    // This store must be visible to other threads before we reload below.
+    // Otherwise, another thread could unlink tmp from its structure and scan
+    // the hazard slots while this store is still sitting unseen, so neither
+    // thread notices the other's operation. The fence forces this store and the
+    // reload to line up in the same global order as that other thread's unlink
+    // and then scan, so one of the two always sees what the other just did.
+    std::atomic_thread_fence(std::memory_order::seq_cst);
+    node = atomic.load(MemoryOrder::relaxed);
   } while (node != tmp);
 
   return node;

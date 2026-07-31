@@ -4,18 +4,25 @@
 #include <threadweave/internal/Node.h>
 #include <threadweave/internal/utils.h>
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 namespace ThreadWeave::Internal {
-// Future node base class to hold function pointer and maintain node reference
-// count
+
+/**
+ * Task base class allows thread pool to store generic tasks of varying return
+ * types that can be cast back to the underlying derived type
+ */
 class TaskBase {
  protected:
   enum class TaskStatus : std::int8_t { pending, ready, waiting };
 
  public:
   // --- Data members
+
+  // TODO: Review for false sharing
 
   // Pointer to function to execute
   void (*execute_)(TaskBase*){nullptr};
@@ -28,23 +35,34 @@ class TaskBase {
 
   // --- Member functions
 
-  // Determine if future result is ready
+  /**
+   * Determine if task result is ready
+   * @return true if the task result is ready, false otherwise
+   */
   bool isReady() const noexcept;
 
-  // Decrements reference count indicating caller no longer needs the node to
-  // stay alive at which point the last caller can call deallocate()
+  /**
+   * Decrements reference count indicating caller no longer needs the node to
+   * stay alive at which point the last caller can call deallocate()
+   * @return true if the caller is the last instance with a reference, false
+   * otherwise
+   */
   bool releaseReference() noexcept;
 
-  // Wait for the task to finish running
+  /**
+   * Wait for the task to finish running
+   */
   void wait() noexcept;
 
-  // Notify when the task is done running
+  /**
+   * Notify when the task is done running
+   */
   void notify() noexcept;
 };
 
 template <typename T>
 class Task : public TaskBase {
-  using ResultT = std::conditional_t<std::is_void_v<T>, std::byte, T>;
+  using ResultType = std::conditional_t<std::is_void_v<T>, std::byte, T>;
 
  public:
 #ifdef TW_CALLABLE_STORAGE_SIZE
@@ -58,29 +76,50 @@ class Task : public TaskBase {
 #endif
 
   // --- Data members
+
+  // Storage for pool task submission to store a bound task
   alignas(std::max_align_t) std::byte callableStorage_[kCallableStorageSize];
-  alignas(ResultT) std::byte resultStorage_[sizeof(ResultT)];
+
+  // Storage for the task result
+  alignas(ResultType) std::byte resultStorage_[sizeof(ResultType)];
+
+  // Pointer to any thrown exceptions
   std::exception_ptr exception_{nullptr};
+
+  // Internal node allocator information
   AllocatorInfo<Task> _internal{};
+
+  // Flag allwoing us to track whether the destructor needs to and can be called
   bool hasResult_{false};
 
-  // Dtor
+  // --- Ctors, dtor, and assignment operators
+
+  Task() = default;
   ~Task();
+
+  // Prevent copies and moves
+  Task(const Task&) = delete;
+  Task(Task&&) = delete;
+  Task& operator=(const Task&) = delete;
+  Task& operator=(Task&&) = delete;
 
   // --- Member functions
 
-  // Reset the members of our future node instance
+  /**
+   * Clean up after a task and reset it to it's "default" state
+   */
   void reset() noexcept;
 
  private:
-  // Clean up stored results if present
+  /**
+   * Clean up stored results if present
+   */
   void destroyResults() noexcept;
 };
 
 template <typename T>
 Task<T>::~Task() {
-  // Guards against leaking a completed result that was never retrieved
-  destroyResults();
+  destroyResults();  // guards against leaking results that were never retrieved
 }
 
 template <typename T>
@@ -94,9 +133,11 @@ void Task<T>::reset() noexcept {
 
 template <typename T>
 void Task<T>::destroyResults() noexcept {
-  if constexpr (!std::is_void_v<T>) {
+  if constexpr (!std::is_void_v<T> &&
+                !std::is_trivially_destructible_v<ResultType>) {
     if (hasResult_) {
-      std::launder(reinterpret_cast<ResultT*>(resultStorage_))->~ResultT();
+      std::launder(reinterpret_cast<ResultType*>(resultStorage_))
+          ->~ResultType();
       hasResult_ = false;
     }
   } else {

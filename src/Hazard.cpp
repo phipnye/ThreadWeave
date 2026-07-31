@@ -66,6 +66,14 @@ bool ThreadHazardManager::isPointerInUse(const void* const nodePtr) noexcept {
     return false;
   }
 
+  // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard.
+  // Without this, the removal that makes nodePtr eligible for recycling
+  // (e.g. the CAS or exchange that unlinks it) and this scan are only ordered
+  // by acquire/release, which permits an interleaving where a thread's
+  // hazard-slot publish is invisible and thus both threads see stale memory
+  // causing an ABA issue
+  // std::atomic_thread_fence(MemoryOrder::seq_cst);
+
   for (const auto& [id, ptrs] : slotsPool) {
     // Empty id indicates no use
     if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {

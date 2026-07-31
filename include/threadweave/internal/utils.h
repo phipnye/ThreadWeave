@@ -36,7 +36,7 @@ static_assert(TW_MAX_THREADS > 0,
 inline constexpr Index kMaxThreads{TW_MAX_THREADS};
 #else
 // Default value, user can set via macro
-inline constexpr Index kMaxThreads{16};
+inline constexpr Index kMaxThreads{32};
 #endif
 
 // Custom assertions

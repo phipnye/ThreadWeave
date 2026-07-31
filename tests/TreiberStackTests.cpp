@@ -10,14 +10,11 @@
 #include <thread>
 #include <vector>
 
-template <typename T>
-using Stack = ThreadWeave::TreiberStack<T>;
-
-namespace MemoryOrder = ThreadWeave::MemoryOrder;
+using namespace ThreadWeave;
 
 // Make sure an empty stack returns std::nullopt
 TEST(TreiberStackTests, EmptyPopReturnsNullopt) {
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   EXPECT_TRUE(stk.empty());
   const auto val{stk.pop()};
   EXPECT_FALSE(val.has_value());
@@ -26,7 +23,7 @@ TEST(TreiberStackTests, EmptyPopReturnsNullopt) {
 
 // Trivial single push/pop
 TEST(TreiberStackTests, SinglePushPop) {
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   EXPECT_TRUE(stk.empty());
   stk.push(42);
   EXPECT_FALSE(stk.empty());
@@ -40,7 +37,7 @@ TEST(TreiberStackTests, SinglePushPop) {
 // Make sure the stack follows LIFO when executed sequentially
 TEST(TreiberStackTests, StackIsLIFO) {
   constexpr int n{100};
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
 
   // Push 0-99 into stack
   for (int i{0}; i < n; ++i) {
@@ -63,7 +60,7 @@ TEST(TreiberStackTests, StackIsLIFO) {
 TEST(TreiberStackTests, MoveOnlyType) {
   // Slight modification to previous test except now with a move-only unique ptr
   constexpr int n{100};
-  Stack<std::unique_ptr<int>> stk{};
+  TreiberStack<std::unique_ptr<int>> stk{};
 
   // Push unique pointers maintaining values 0-99 into the stack
   for (int i{0}; i < n; ++i) {
@@ -85,7 +82,7 @@ TEST(TreiberStackTests, MoveOnlyType) {
 
 // Test concurrent pushes and make sure no data is lost
 TEST(TreiberStackTests, ConcurrentPushes) {
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   constexpr int nThreads{8};
   constexpr int itemsPerThread{1000};
   std::vector<std::jthread> threads{};
@@ -120,7 +117,7 @@ TEST(TreiberStackTests, ConcurrentPushes) {
 
 // Test concurrent pops and make sure no data is lost
 TEST(TreiberStackTests, ConcurrentPops) {
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   constexpr int totalItems{10'000};
   constexpr int nThreads{8};
 
@@ -162,7 +159,7 @@ TEST(TreiberStackTests, ConcurrentPops) {
 
 // Ensure data integrity with both concurrent pushes and pops
 TEST(TreiberStackTests, ConcurrentProducerConsumer) {
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   constexpr int nPairs{4};
   constexpr int opsPerThread{5000};
 
@@ -224,7 +221,7 @@ TEST(TreiberStackTests, ConcurrentProducerConsumer) {
 TEST(TreiberStackTests, RandomizedThreadOperationsTest) {
   constexpr int nPushes{100'000};
   constexpr int nThreads{8};
-  Stack<int> stk{};
+  TreiberStack<int> stk{};
   std::atomic<int> runCnt{0};
   std::vector<std::jthread> threads{};
   threads.reserve(nThreads);

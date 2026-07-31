@@ -338,14 +338,14 @@ template <typename T>
 ChaseLevDeque<T>::RingBuffer* ChaseLevDeque<T>::expand(const Index front,
                                                        const Index back) {
   // Note that we must double the capacity to retain a power of two for the
-  // capacity for accurate wrap around indexing logic using a bitmask
+  // capacity for accurate wrap around indexing logic
   RingBuffer* const oldArray{data_.load(MemoryOrder::relaxed)};
   TW_ASSERT(oldArray != nullptr, "oldArray cannot be null during expansion");
-  TW_ASSERT(
-      oldArray->capacity() > 0 &&
-          oldArray->capacity() <= (std::numeric_limits<Index>::max() >> 1),
-      "RingBuffer capacity overflow during expansion");
-  RingBuffer* const newArray{new RingBuffer{oldArray->capacity() << 1}};
+  const Index oldCapacity{oldArray->capacity()};
+  TW_ASSERT(oldCapacity > 0 &&
+                oldCapacity <= (std::numeric_limits<Index>::max() >> 1),
+            "RingBuffer capacity overflow during expansion");
+  RingBuffer* const newArray{new RingBuffer{oldCapacity << 1}};
 
   // Copy over elements
   for (Index i{front}; i < back; ++i) {

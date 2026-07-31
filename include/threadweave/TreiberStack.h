@@ -76,11 +76,8 @@ TreiberStack<T>::~TreiberStack() {
   Node* head{head_.load(MemoryOrder::relaxed)};
 
   while (head) {
-    // ReSharper disable once CppLocalVariableMayBeConst
     Node* const curr{head};
     head = head->next;
-
-    // Return the node memory back to the allocator pools safely
     Allocator::deallocate(curr);
   }
 }

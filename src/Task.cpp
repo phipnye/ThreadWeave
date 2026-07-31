@@ -10,7 +10,7 @@ bool TaskBase::isReady() const noexcept {
 bool TaskBase::releaseReference() noexcept {
   const auto oldRefCnt{refCount_.fetch_sub(1, MemoryOrder::acq_rel)};
   TW_ASSERT(oldRefCnt > 0, "Double-release detected in FutureNodeBase");
-  return oldRefCnt == 1;
+  return oldRefCnt == 1;  // true if last holding reference
 }
 
 void TaskBase::wait() noexcept {
@@ -22,7 +22,7 @@ void TaskBase::wait() noexcept {
   // Try transitioning from waiting to running
   auto expected{TaskStatus::pending};
   state_.compare_exchange_strong(expected, TaskStatus::waiting,
-                                MemoryOrder::release, MemoryOrder::relaxed);
+                                 MemoryOrder::release, MemoryOrder::relaxed);
 
   // Wait until the task is ready (no longer waiting)
   while (!isReady()) {

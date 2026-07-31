@@ -1,6 +1,6 @@
-#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/ChaseLevDeque.h>
+#include <threadweave/internal/utils.h>
 
 #include <algorithm>
 #include <atomic>
@@ -13,14 +13,11 @@
 
 #include "PaddedAtomicInt.h"
 
-template <typename T>
-using Deque = ThreadWeave::ChaseLevDeque<T>;
-
-namespace MemoryOrder = ThreadWeave::MemoryOrder;
+using namespace ThreadWeave;
 
 // Make sure an empty deque returns std::nullopt on pop and steal
 TEST(ChaseLevDequeTests, EmptyDequeReturnsNullopt) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   EXPECT_TRUE(dq.empty());
   const auto popVal{dq.pop()};
   EXPECT_FALSE(popVal.has_value());
@@ -32,7 +29,7 @@ TEST(ChaseLevDequeTests, EmptyDequeReturnsNullopt) {
 
 // Trivial test for a single push and pop along with a single push and steal
 TEST(ChaseLevDequeTests, SinglePushPopSteal) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   EXPECT_TRUE(dq.empty());
   constexpr int val1{42};
   dq.push(val1);
@@ -52,7 +49,7 @@ TEST(ChaseLevDequeTests, SinglePushPopSteal) {
 
 // Basic sanity check for LIFO behavior of pops
 TEST(ChaseLevDequeTests, OwnerPopIsLifo) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   constexpr int n{100};
 
   for (int i{0}; i < n; ++i) {
@@ -70,7 +67,7 @@ TEST(ChaseLevDequeTests, OwnerPopIsLifo) {
 
 // Basic sanity check for FIFO behavior of steals
 TEST(ChaseLevDequeTests, ThiefStealIsFifo) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   constexpr int n{100};
 
   for (int i{0}; i < n; ++i) {
@@ -87,7 +84,7 @@ TEST(ChaseLevDequeTests, ThiefStealIsFifo) {
 // Test to make sure the internal wrap around behavior of the ring buffer (uses
 // modulo/power 2 bitmasking) behaves as expected
 TEST(ChaseLevDequeTests, WrapAroundBoundary) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   constexpr int n{100'000};
 
   for (int i{0}; i < n; ++i) {
@@ -107,7 +104,7 @@ TEST(ChaseLevDequeTests, WrapAroundBoundary) {
 // Force expansion of the internal ring buffer while thieves may be looking at
 // old buffer to make sure there's no invalid pointer use
 TEST(ChaseLevDequeTests, StealDuringExpandStress) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   constexpr int nThieves{2};
   constexpr int nItems{500'000};
   std::atomic<bool> stop{false};
@@ -142,7 +139,7 @@ TEST(ChaseLevDequeTests, StealDuringExpandStress) {
 // Push only a few items (equivalent of the initial capacity) and make sure no
 // expansions occur
 TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   constexpr int nThieves{2};
   constexpr int nItems{16};  // initial capacity
   std::atomic<bool> stop{false};
@@ -182,7 +179,7 @@ TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
 TEST(ChaseLevDequeTests, RandomizedOperationsTest) {
   for (constexpr int testSet[]{10, 124, 3525, 43861};
        const int nTasks : testSet) {
-    Deque<int> dq{};
+    ChaseLevDeque<int> dq{};
     constexpr int nThieves{10};
     std::vector<PaddedAtomicInt> actualCounts(nTasks);
     std::vector<std::jthread> thieves{};
@@ -275,7 +272,7 @@ TEST(ChaseLevDequeTests, SingleItemRace) {
   constexpr int nThieves{4};
 
   // Repeatedly reuse the same resources
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
   std::vector<std::jthread> thieves{};
   thieves.reserve(nThieves);
 
@@ -304,7 +301,7 @@ TEST(ChaseLevDequeTests, SingleItemRace) {
 
 TEST(ChaseLevDequeTests, TwoItemPopSteal) {
   constexpr int nIterations{1'000};
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
 
   for (int i{0}; i < nIterations; ++i) {
     dq.push(10);  // front element (intended for thief)
@@ -326,7 +323,7 @@ TEST(ChaseLevDequeTests, TwoItemPopSteal) {
 TEST(ChaseLevDequeTests, HighContentionOnSingleItem) {
   constexpr int nIterations{100};
   constexpr int nThieves{32};
-  Deque<int> dq{};
+  ChaseLevDeque<int> dq{};
 
   for (int i{0}; i < nIterations; ++i) {
     dq.push(i);
@@ -355,8 +352,8 @@ TEST(ChaseLevDequeTests, HighContentionOnSingleItem) {
 
 // These tests should fail a TW_ASSERT if TW_NDEBUG not defined
 #ifndef TW_NDEBUG
-TEST(ChaseLevDequeDeathTest, SpmcViolationPushFromNonOwner) {
-  Deque<int> dq{};
+TEST(ChaseLevDequeTests, SpmcViolationPushFromNonOwner) {
+  ChaseLevDeque<int> dq{};
   dq.push(1);
 
   // Attempting to push from a different thread must fail the assertion
@@ -365,12 +362,13 @@ TEST(ChaseLevDequeDeathTest, SpmcViolationPushFromNonOwner) {
       "ChaseLevDeque SPMC violation");
 }
 
-TEST(ChaseLevDequeDeathTest, SpmcViolationPopFromNonOwner) {
-  Deque<int> dq{};
+TEST(ChaseLevDequeTests, SpmcViolationPopFromNonOwner) {
+  ChaseLevDeque<int> dq{};
   dq.push(1);
 
   EXPECT_DEATH(
       { std::jthread t([&dq] { (void)dq.pop(); }); },
       "ChaseLevDeque SPMC violation");
 }
+
 #endif

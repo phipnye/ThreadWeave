@@ -1,6 +1,6 @@
-#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/VyukovQueue.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <bitset>
@@ -10,21 +10,18 @@
 #include <thread>
 #include <vector>
 
-template <typename T>
-using Queue = ThreadWeave::VyukovQueue<T>;
-
-namespace MemoryOrder = ThreadWeave::MemoryOrder;
+using namespace ThreadWeave;
 
 // Make sure an empty queue returns std::nullopt
 TEST(VyukovQueueTests, EmptyPopReturnsNullopt) {
-  Queue<int> q{};
+  VyukovQueue<int> q{};
   const auto val{q.pop()};
   EXPECT_FALSE(val.has_value());
 }
 
 // Trivial single push/pop
 TEST(VyukovQueueTests, SinglePushPop) {
-  Queue<int> q{};
+  VyukovQueue<int> q{};
   q.push(42);
   const auto val{q.pop()};
   ASSERT_TRUE(val.has_value());
@@ -35,7 +32,7 @@ TEST(VyukovQueueTests, SinglePushPop) {
 // Make sure the queue follows FIFO when executed sequentially
 TEST(VyukovQueueTests, QueueIsFifo) {
   constexpr int n{100};
-  Queue<int> q{};
+  VyukovQueue<int> q{};
 
   // Push 0-99 into queue
   for (int i{0}; i < n; ++i) {
@@ -55,7 +52,7 @@ TEST(VyukovQueueTests, QueueIsFifo) {
 // Test FIFO against a move-only type
 TEST(VyukovQueueTests, MoveOnlyType) {
   constexpr int n{100};
-  Queue<std::unique_ptr<int>> q{};
+  VyukovQueue<std::unique_ptr<int>> q{};
 
   for (int i{0}; i < n; ++i) {
     q.push(std::make_unique<int>(i));
@@ -73,7 +70,7 @@ TEST(VyukovQueueTests, MoveOnlyType) {
 
 // Test concurrent pushes into a single consumer
 TEST(VyukovQueueTests, ConcurrentPushes) {
-  Queue<int> q{};
+  VyukovQueue<int> q{};
   constexpr int nThreads{8};
   constexpr int itemsPerThread{1000};
   std::vector<std::jthread> threads{};
@@ -106,7 +103,7 @@ TEST(VyukovQueueTests, ConcurrentPushes) {
 
 // Ensure data integrity with concurrent producers and a single consumer
 TEST(VyukovQueueTests, ConcurrentProducersSingleConsumer) {
-  Queue<int> q{};
+  VyukovQueue<int> q{};
   constexpr int nProducers{8};
   constexpr int opsPerThread{5000};
 
@@ -169,7 +166,7 @@ TEST(VyukovQueueTests, RandomizedMultiProducerSingleConsumerTest) {
   constexpr int nPushesPerProducer{10'000};
   constexpr int totalPushes{nProducers * nPushesPerProducer};
 
-  Queue<int> q{};
+  VyukovQueue<int> q{};
   std::vector<std::jthread> producers{};
   producers.reserve(nProducers);
   std::atomic<bool> doneProducing{false};

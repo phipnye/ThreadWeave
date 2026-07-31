@@ -1,6 +1,6 @@
-#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/MichaelScottQueue.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <bitset>
@@ -10,14 +10,11 @@
 #include <thread>
 #include <vector>
 
-template <typename T>
-using Queue = ThreadWeave::MichaelScottQueue<T>;
-
-namespace MemoryOrder = ThreadWeave::MemoryOrder;
+using namespace ThreadWeave;
 
 // Make sure an empty queue returns std::nullopt
 TEST(MichaelScottQueueTests, EmptyPopReturnsNullopt) {
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   EXPECT_TRUE(q.empty());
   const auto val{q.pop()};
   EXPECT_FALSE(val.has_value());
@@ -26,7 +23,7 @@ TEST(MichaelScottQueueTests, EmptyPopReturnsNullopt) {
 
 // Trivial single push/pop
 TEST(MichaelScottQueueTests, SinglePushPop) {
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   EXPECT_TRUE(q.empty());
   q.push(42);
   EXPECT_FALSE(q.empty());
@@ -40,7 +37,7 @@ TEST(MichaelScottQueueTests, SinglePushPop) {
 // Make sure the queue follows FIFO when executed sequentially
 TEST(MichaelScottQueueTests, QueueIsFifo) {
   constexpr int n{100};
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
 
   // Push 0-99 into queue
   for (int i{0}; i < n; ++i) {
@@ -61,7 +58,7 @@ TEST(MichaelScottQueueTests, QueueIsFifo) {
 // Test FIFO against a move only type
 TEST(MichaelScottQueueTests, MoveOnlyType) {
   constexpr int n{100};
-  Queue<std::unique_ptr<int>> q{};
+  MichaelScottQueue<std::unique_ptr<int>> q{};
 
   for (int i{0}; i < n; ++i) {
     q.push(std::make_unique<int>(i));
@@ -80,7 +77,7 @@ TEST(MichaelScottQueueTests, MoveOnlyType) {
 
 // Test concurrent pushes and make sure no data is lost
 TEST(MichaelScottQueueTests, ConcurrentPushes) {
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   constexpr int nThreads{8};
   constexpr int itemsPerThread{1000};
   std::vector<std::jthread> threads{};
@@ -113,7 +110,7 @@ TEST(MichaelScottQueueTests, ConcurrentPushes) {
 
 // Test concurrent pops and make sure no data is lost
 TEST(MichaelScottQueueTests, ConcurrentPops) {
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   constexpr int totalItems{10'000};
   constexpr int nThreads{8};
 
@@ -151,7 +148,7 @@ TEST(MichaelScottQueueTests, ConcurrentPops) {
 
 // Ensure data integrity with both concurrent pushes and pops
 TEST(MichaelScottQueueTests, ConcurrentProducerConsumer) {
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   constexpr int nPairs{4};
   constexpr int opsPerThread{5000};
 
@@ -211,7 +208,7 @@ TEST(MichaelScottQueueTests, ConcurrentProducerConsumer) {
 TEST(MichaelScottQueueTests, RandomizedThreadOperationsTest) {
   constexpr int nThreads{8};
   constexpr int nPushes{100'000};
-  Queue<int> q{};
+  MichaelScottQueue<int> q{};
   std::atomic<int> runCnt{0};
   std::vector<std::jthread> threads{};
   threads.reserve(nThreads);

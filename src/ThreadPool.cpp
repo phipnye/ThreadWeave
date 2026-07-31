@@ -116,18 +116,21 @@ void ThreadPool::workerLoop(const Index threadId) {
     // Thread just tried to find a task but found nothing, yield if still no
     // queued tasks
     if (nQueuedTasks == 0 && !stop) {
-      // Announce intention to park (note sequential consistency synchronizes
-      // with submit() and prevents store-load reordering that could cause a
-      // lost wakeup and indefinite parking
+      // Announce intention to park
+      nParkedWorkers_.fetch_add(1, MemoryOrder::relaxed);
+
+      // Sequential consistency synchronizes with submit() and prevents
+      // store-load reordering that could cause a lost wakeup and indefinite
+      // parking
       // Submit:       1) Marks task queued   -> 2) Checks if worker asleep
       // WorkerLoop(): 1) Marks worker parked -> 2) Checks if task is queued
       // With weaker memory orderings, both threads could see old memory at
       // step 2 and if both read 0, we get deadlock
-      nParkedWorkers_.fetch_add(1, MemoryOrder::seq_cst);
+      std::atomic_thread_fence(MemoryOrder::seq_cst);
 
-      // Re-read state AFTER incrementing parked counter to catch races
+      // Re-read state after incrementing parked counter to catch races
       const auto [expectedState, expectedTasks,
-                  expectedStop]{getState(MemoryOrder::seq_cst)};
+                  expectedStop]{getState(MemoryOrder::relaxed)};
 
       if (expectedTasks == 0 && !expectedStop) {
         // Value hasn't changed, safe to park
@@ -198,7 +201,7 @@ bool ThreadPool::tryExecuteTask(const Index threadId) {
     // Index of thread to try to steal from
     const Index stealId{(victimIdx + i) % nThreads_};
 
-    // Prevent stealing worker from stealing from itself
+    // Prevent worker from stealing from itself
     if (stealId == threadId) {
       continue;
     }

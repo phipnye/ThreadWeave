@@ -238,18 +238,20 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   // Bind the execution layout
   task->execute_ = &ThreadPool::taskEntryPoint<ReturnType, Callable>;
 
-  // Increment both task counters (note sequential consistency synchronizes with
-  // worker loop and prevents store-load reordering that could cause a
-  // lost wakeup and indefinite parking
+  // Increment both task counters
+  nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
+  incrementNumQueued(MemoryOrder::relaxed);
+
+  // Sequential consistency synchronizes with worker loop and prevents
+  // store-load reordering that could cause a lost wakeup and indefinite parking
   // Submit:       1) Marks task queued   -> 2) Checks if worker asleep
   // WorkerLoop(): 1) Marks worker parked -> 2) Checks if task is queued
   // With weaker memory orderings, both threads could see old memory at
   // step 2 and if both read 0, we get deadlock
-  nPendingTasks_.fetch_add(1, MemoryOrder::relaxed);
-  incrementNumQueued(MemoryOrder::seq_cst);
+  std::atomic_thread_fence(MemoryOrder::seq_cst);
 
   // Wake up parked workers waiting on queued work
-  if (nParkedWorkers_.load(MemoryOrder::seq_cst) > 0) {
+  if (nParkedWorkers_.load(MemoryOrder::relaxed) > 0) {
     state_.notify_one();
   }
 
@@ -266,6 +268,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
 
   return Future<ReturnType>{task};
 }
+
 template <typename ReturnType, typename Callable>
 void ThreadPool::taskEntryPoint(Internal::TaskBase* const base) {
   using TaskType = Internal::Task<ReturnType>;
