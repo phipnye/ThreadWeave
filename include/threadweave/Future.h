@@ -12,6 +12,17 @@
 
 namespace ThreadWeave {
 
+namespace Internal {
+
+/**
+ * Bridge function defined in ThreadPool.cpp to allow thread workers to continue
+ * working without blocking waits while waiting for a result
+ * @param task a pointer to the future node base to wait on
+ */
+void helpWait(TaskBase* task) noexcept;
+
+}  // namespace Internal
+
 /**
  * A template class providing a mechanism to retrieve results from an
  * asynchronous operation
@@ -89,7 +100,7 @@ class Future {
    * @param task A pointer to the future node that is no longer needed by the
    * caller
    */
-  static void retire(Task* task);
+  static void retireTaskNode(Task* task);
 };
 
 template <typename T>
@@ -99,7 +110,7 @@ Future<T>::Future(Task* const task) : task_{task} {
 
 template <typename T>
 Future<T>::~Future() {
-  retire(task_);
+  retireTaskNode(task_);
 }
 
 template <typename T>
@@ -109,7 +120,7 @@ Future<T>::Future(Future&& other) noexcept
 template <typename T>
 Future<T>& Future<T>::operator=(Future&& other) noexcept {
   if (this != &other) {
-    retire(task_);
+    retireTaskNode(task_);
     task_ = std::exchange(other.task_, nullptr);
   }
 
@@ -121,6 +132,11 @@ void Future<T>::wait() noexcept {
   TW_ASSERT(task_ != nullptr,
             "Cannot call wait() on an uninitialized, invalid, or "
             "already-consumed Future");
+
+  // Gets routed to call thread pool's awaitTask(). This is done to give context
+  // about the calling thread to determine if it's a worker. If it's a worker,
+  // we want it to continue doing work so the pool does not become starved if
+  // tasks submit new tasks
   Internal::helpWait(task_);
 }
 
@@ -131,23 +147,23 @@ T Future<T>::get() {
             "already-consumed Future");
   wait();
 
-  // Steal the future node
-  Task* const node{std::exchange(task_, nullptr)};
+  // Steal the task
+  Task* const task{std::exchange(task_, nullptr)};
 
   // Rethrow any stored exceptions
-  if (node->exception_) {
+  if (task->exception_) {
     // Steal exception pointer before deallocating and then rethrowing
-    auto ex{std::move(node->exception_)};
-    retire(node);
+    auto ex{std::move(task->exception_)};
+    retireTaskNode(task);
     std::rethrow_exception(ex);
   }
 
   if constexpr (std::is_void_v<T>) {
-    retire(node);
-    return;  // silences IDE
+    retireTaskNode(task);
+    return;
   } else {
     TW_ASSERT(
-        node->hasResult_,
+        task->hasResult_,
         "Future::get() called but node has no result or exception stored");
 
     // Under the C++ standard (specifically [basic.life]), a new object is
@@ -165,19 +181,20 @@ T Future<T>::get() {
     // aren't replacing a base class subobject of a larger class).
     // resultBuffer is of type std::byte[] and decays to a byte* thus launder
     // is necessary here to prevent violating 2.
-    T* resultBuffer{std::launder(reinterpret_cast<T*>(node->resultStorage_))};
+    T* const resultBuffer{
+        std::launder(reinterpret_cast<T*>(task->resultStorage_))};
 
     // Store results and free resources before returning result
     T res{std::move(*resultBuffer)};
     resultBuffer->~T();
-    node->hasResult_ = false;
-    retire(node);
+    task->hasResult_ = false;
+    retireTaskNode(task);
     return res;
   }
 }
 
 template <typename T>
-void Future<T>::retire(Task* const task) {
+void Future<T>::retireTaskNode(Task* const task) {
   if (task && task->releaseReference()) {
     Allocator::deallocate(task);
   }

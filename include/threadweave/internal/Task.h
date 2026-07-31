@@ -17,7 +17,7 @@ class TaskBase {
  public:
   // --- Data members
 
-  // Function pointer to function to execute
+  // Pointer to function to execute
   void (*execute_)(TaskBase*){nullptr};
 
   // Status of the result
@@ -76,13 +76,6 @@ class Task : public TaskBase {
   // Clean up stored results if present
   void destroyResults() noexcept;
 };
-
-/**
- * Bridge function defined in ThreadPool.cpp to allow thread workers to continue
- * working without blocking waits while waiting for a result
- * @param task a pointer to the future node base to wait on
- */
-void helpWait(TaskBase* task) noexcept;
 
 template <typename T>
 Task<T>::~Task() {

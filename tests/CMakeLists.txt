@@ -34,6 +34,19 @@ target_link_options(FutureTests PRIVATE
 target_link_libraries(FutureTests PRIVATE ThreadWeave GTest::gtest_main)
 gtest_discover_tests(FutureTests)
 
+# --- Task Tests
+
+add_executable(TaskTests TaskTests.cpp)
+target_compile_options(TaskTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_options(TaskTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
+)
+target_link_libraries(TaskTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(TaskTests)
+
 # --- Treiber Stack Tests
 
 add_executable(TreiberStackTests TreiberStackTests.cpp)

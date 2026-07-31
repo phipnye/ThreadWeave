@@ -165,6 +165,8 @@ void ThreadPool::awaitTask(Internal::TaskBase* const task) {
 }
 
 bool ThreadPool::tryExecuteTask(const Index threadId) {
+  TW_ASSERT(threadId >= 0 && threadId < nThreads_, "Invalid thread ID");
+
   // Drain the global injection (MPSC) queue into this worker's deeque so
   // other threads can steal from it
   if (const KeyGuard keyGuard{injectionKey_}; keyGuard.holdsKey()) {
