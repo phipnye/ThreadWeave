@@ -1,5 +1,6 @@
 # ThreadWeave
 
+[[THIS PROJECT IS CURRENTLY WIP AND SUBJECT TO CHANGE]]
 ThreadWeave is a modern C++23 concurrency library providing a high-performance, work-stealing **thread pool** along with a collection of lock-free data structures used to build it. It's designed for low-overhead task submission and execution across many worker threads.
 
 ## Features
@@ -89,7 +90,7 @@ The library exposes several compile-time knobs via `target_compile_definitions` 
 | `TW_NDEBUG`          | Automatically defined in Release builds; strips internal debug assertions.                                                            |
 | `TW_CACHE_LINE_SIZE` | Cache line size used for alignment (default `64`), avoids relying on `std::hardware_destructive_interference_size`.                   |
 | `TW_SEQ_CST`         | If defined, forces every atomic operation in the library to use sequential consistency (useful for debugging memory-ordering issues). |
-| `TW_PAYLOAD_SIZE`    | Size of the internal buffer used to store a task's bound function/arguments inside a `Future` node.                                   |
+| `TW_CALLABLE_STORAGE_SIZE`    | Size of the internal buffer used to store a task's bound function/arguments inside a `Future` node.                                   |
 | `TW_MAX_THREADS`     | Maximum number of threads the hazard-pointer subsystem should expect to manage.                                                       |
 
 ## Project Layout

@@ -1,6 +1,6 @@
+#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/ChaseLevDeque.h>
-#include <threadweave/utils.h>
 
 #include <algorithm>
 #include <atomic>
@@ -301,3 +301,76 @@ TEST(ChaseLevDequeTests, SingleItemRace) {
     EXPECT_TRUE(dq.empty());
   }
 }
+
+TEST(ChaseLevDequeTests, TwoItemPopSteal) {
+  constexpr int nIterations{1'000};
+  Deque<int> dq{};
+
+  for (int i{0}; i < nIterations; ++i) {
+    dq.push(10);  // front element (intended for thief)
+    dq.push(20);  // back element (intended for owner)
+    std::optional<int> stolenVal{};
+    std::jthread thief([&] { stolenVal = dq.steal(); });
+    std::optional<int> poppedVal{dq.pop()};
+    thief.join();
+
+    // Both operations should succeed without returning nullopt
+    ASSERT_TRUE(poppedVal.has_value());
+    ASSERT_TRUE(stolenVal.has_value());
+    EXPECT_EQ(*poppedVal, 20);
+    EXPECT_EQ(*stolenVal, 10);
+    EXPECT_TRUE(dq.empty());
+  }
+}
+
+TEST(ChaseLevDequeTests, HighContentionOnSingleItem) {
+  constexpr int nIterations{100};
+  constexpr int nThieves{32};
+  Deque<int> dq{};
+
+  for (int i{0}; i < nIterations; ++i) {
+    dq.push(i);
+    std::atomic<int> successCount{0};
+    std::vector<std::jthread> thieves{};
+    thieves.reserve(nThieves);
+
+    for (int t{0}; t < nThieves; ++t) {
+      thieves.emplace_back([&] {
+        if (dq.steal().has_value()) {
+          successCount.fetch_add(1, MemoryOrder::relaxed);
+        }
+      });
+    }
+
+    if (dq.pop().has_value()) {
+      successCount.fetch_add(1, MemoryOrder::relaxed);
+    }
+
+    // Exactly one thread (either pop or one thief) should claim the element
+    thieves.clear();
+    EXPECT_EQ(successCount.load(MemoryOrder::relaxed), 1);
+    EXPECT_TRUE(dq.empty());
+  }
+}
+
+// These tests should fail a TW_ASSERT if TW_NDEBUG not defined
+#ifndef TW_NDEBUG
+TEST(ChaseLevDequeDeathTest, SpmcViolationPushFromNonOwner) {
+  Deque<int> dq{};
+  dq.push(1);
+
+  // Attempting to push from a different thread must fail the assertion
+  EXPECT_DEATH(
+      { std::jthread t([&dq] { dq.push(2); }); },
+      "ChaseLevDeque SPMC violation");
+}
+
+TEST(ChaseLevDequeDeathTest, SpmcViolationPopFromNonOwner) {
+  Deque<int> dq{};
+  dq.push(1);
+
+  EXPECT_DEATH(
+      { std::jthread t([&dq] { (void)dq.pop(); }); },
+      "ChaseLevDeque SPMC violation");
+}
+#endif

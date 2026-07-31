@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <threadweave/TreiberStack.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <bitset>

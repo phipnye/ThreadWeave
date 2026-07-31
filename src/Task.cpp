@@ -4,11 +4,11 @@
 namespace ThreadWeave::Internal {
 
 bool TaskBase::isReady() const noexcept {
-  return state.load(MemoryOrder::acquire) == TaskStatus::ready;
+  return state_.load(MemoryOrder::acquire) == TaskStatus::ready;
 }
 
 bool TaskBase::releaseReference() noexcept {
-  const auto oldRefCnt{refCount.fetch_sub(1, MemoryOrder::acq_rel)};
+  const auto oldRefCnt{refCount_.fetch_sub(1, MemoryOrder::acq_rel)};
   TW_ASSERT(oldRefCnt > 0, "Double-release detected in FutureNodeBase");
   return oldRefCnt == 1;
 }
@@ -21,21 +21,21 @@ void TaskBase::wait() noexcept {
 
   // Try transitioning from waiting to running
   auto expected{TaskStatus::pending};
-  state.compare_exchange_strong(expected, TaskStatus::waiting,
+  state_.compare_exchange_strong(expected, TaskStatus::waiting,
                                 MemoryOrder::release, MemoryOrder::relaxed);
 
   // Wait until the task is ready (no longer waiting)
   while (!isReady()) {
-    state.wait(TaskStatus::waiting, MemoryOrder::relaxed);
+    state_.wait(TaskStatus::waiting, MemoryOrder::relaxed);
   }
 }
 
 void TaskBase::notify() noexcept {
   // Update to ready and notify waiting entities if it was originally in a
   // waiting state
-  if (state.exchange(TaskStatus::ready, MemoryOrder::release) ==
+  if (state_.exchange(TaskStatus::ready, MemoryOrder::release) ==
       TaskStatus::waiting) {
-    state.notify_one();
+    state_.notify_one();
   }
 }
 

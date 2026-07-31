@@ -21,6 +21,19 @@ target_link_options(ChaseLevDequeTests PRIVATE
 target_link_libraries(ChaseLevDequeTests PRIVATE ThreadWeave GTest::gtest_main)
 gtest_discover_tests(ChaseLevDequeTests)
 
+# --- Future Tests
+
+add_executable(FutureTests FutureTests.cpp)
+target_compile_options(FutureTests PRIVATE
+        ${COMPILER_FLAGS}
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS};-g>"
+)
+target_link_options(FutureTests PRIVATE
+        "$<$<CONFIG:Debug>:${SANITIZER_FLAGS}>"
+)
+target_link_libraries(FutureTests PRIVATE ThreadWeave GTest::gtest_main)
+gtest_discover_tests(FutureTests)
+
 # --- Treiber Stack Tests
 
 add_executable(TreiberStackTests TreiberStackTests.cpp)

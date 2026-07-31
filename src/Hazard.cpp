@@ -1,5 +1,5 @@
 #include <threadweave/Hazard.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <stdexcept>

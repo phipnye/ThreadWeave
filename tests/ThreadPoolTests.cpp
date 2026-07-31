@@ -1,7 +1,7 @@
+#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
-#include <threadweave/utils.h>
 
 #include <bitset>
 #include <chrono>

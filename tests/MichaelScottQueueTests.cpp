@@ -1,6 +1,6 @@
+#include <threadweave/internal/utils.h>
 #include <gtest/gtest.h>
 #include <threadweave/MichaelScottQueue.h>
-#include <threadweave/utils.h>
 
 #include <atomic>
 #include <bitset>

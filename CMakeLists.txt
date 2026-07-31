@@ -26,7 +26,7 @@ set(COMPILER_FLAGS
 add_library(ThreadWeave STATIC)
 target_sources(ThreadWeave
         PRIVATE
-        src/Future.cpp
+        src/Task.cpp
         src/Hazard.cpp
         src/ThreadPool.cpp
 
@@ -37,12 +37,13 @@ target_sources(ThreadWeave
         include/threadweave/ChaseLevDeque.h
         include/threadweave/Hazard.h
         include/threadweave/MichaelScottQueue.h
-        include/threadweave/Node.h
         include/threadweave/NodeAllocator.h
         include/threadweave/ThreadPool.h
         include/threadweave/TreiberStack.h
         include/threadweave/VyukovQueue.h
-        include/threadweave/utils.h
+        include/threadweave/internal/Node.h
+        include/threadweave/internal/Task.h
+        include/threadweave/internal/utils.h
 )
 target_compile_options(ThreadWeave PRIVATE ${COMPILER_FLAGS})
 
@@ -58,7 +59,7 @@ target_compile_definitions(ThreadWeave PUBLIC TW_CACHE_LINE_SIZE=64)
 # target_compile_definitions(ThreadWeave PUBLIC TW_SEQ_CST)
 
 # Sets the payload buffer size for holding function payloads
-# target_compile_definitions(ThreadWeave PUBLIC TW_PAYLOAD_SIZE=128)
+# target_compile_definitions(ThreadWeave PUBLIC TW_CALLABLE_STORAGE_SIZE=128)
 
 # Set the maximum number of threads an application can expect to use for managing hazard pointer resource
 # target_compile_definitions(ThreadWeave PUBLIC TW_MAX_THREADS=64)

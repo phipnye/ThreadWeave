@@ -61,14 +61,17 @@ ggsave(PLOTS("comparisons_01_performance_ratios.png"), width = 9, height = 5.5, 
 
 # Plot 2: Execution time trend by thread count and workload type ----------------------------------------
 
-ggplot(DT, aes(x = factor(n_tasks), y = mean / 1000, color = package_name, group = package_name)) +
+ggplot(DT, aes(x = n_tasks, y = mean / 1000, color = package_name, group = package_name)) +
   geom_line() +
   geom_point() +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_log10() +
   facet_grid(balanced ~ thread_label, labeller = label_value) +
   labs(
     title = "Execution Time by Thread Count and Workload Type",
-    x = "Number of Tasks",
-    y = "Mean Time (Seconds)",
+    subtitle = "Log-Log Scale",
+    x = "Number of Tasks (log scale)",
+    y = "Mean Time in Seconds (log scale)",
     color = "Package"
   ) +
   theme_bw()

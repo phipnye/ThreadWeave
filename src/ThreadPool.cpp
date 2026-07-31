@@ -1,7 +1,7 @@
-#include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
 #include <threadweave/VyukovQueue.h>
-#include <threadweave/utils.h>
+#include <threadweave/internal/Task.h>
+#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <cstddef>
@@ -14,7 +14,7 @@ namespace ThreadWeave {
 
 ThreadPool::ThreadPool(const Index nThreads)
     : workerDeques_{
-          std::make_unique<ChaseLevDeque<FutureNodeBase*>[]>(nThreads)},
+          std::make_unique<ChaseLevDeque<Internal::TaskBase*>[]>(nThreads)},
       injectionQueue_{},
       workers_{},
       nThreads_{nThreads},
@@ -142,22 +142,23 @@ void ThreadPool::workerLoop(const Index threadId) {
   }
 }
 
-void ThreadPool::awaitNode(FutureNodeBase* const node) {
-  TW_ASSERT(node != nullptr, "Cannot await a null FutureNode");
+void ThreadPool::awaitTask(Internal::TaskBase* const task) {
+  TW_ASSERT(task != nullptr, "Cannot await a null task");
 
   // Non-worker: Fall back to standard atomic parking
-  if (currentPool == nullptr) {
-    node->wait();
+  if (!currentPool) {
+    task->wait();
     return;
   }
 
   TW_ASSERT(workerId >= 0 && workerId < currentPool->nThreads_,
             "Invalid workerId for current pool");
 
-  // Worker executes tasks until the target node completes
-  while (!node->isReady()) {
+  // Worker continues executing tasks until the target task completes
+  while (!task->isReady()) {
     // Yield if failed to find a task to execute
     if (!currentPool->tryExecuteTask(workerId)) {
+      // TODO: Consider re-working this yield
       std::this_thread::yield();
     }
   }
@@ -211,20 +212,16 @@ bool ThreadPool::tryExecuteTask(const Index threadId) {
   return stoleTask;
 }
 
-void ThreadPool::executeTask(FutureNodeBase* const task) {
-  TW_ASSERT(task != nullptr, "Attempted to execute a null task node");
-
-#ifndef TW_NDEBUG
-  {
-    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
-    TW_ASSERT(_nQueued > 0, "Executed task when queued task count was 0");
-  }
-#endif
+void ThreadPool::executeTask(Internal::TaskBase* const task) {
+  TW_ASSERT(task != nullptr, "Attempted to execute a null task");
+  TW_DEBUG_ONLY(
+      const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+      TW_ASSERT(_nQueued > 0, "Executed task when queued task count was 0"););
 
   // Decrement queued count before execution (allows idle workers to unpark -
   // relaxed semantics are fine since no data guarantees required)
   decrementNumQueued(MemoryOrder::relaxed);
-  task->execute(task);
+  task->execute_(task);
 
   // Decrement total count after execution (allows workers to know when to
   // terminate worker loop - release semantics must be used to ensure execution
@@ -290,8 +287,8 @@ bool ThreadPool::KeyGuard::holdsKey() const noexcept {
 
 namespace Internal {
 
-void helpWait(FutureNodeBase* node) noexcept {
-  ThreadPool::awaitNode(node);
+void helpWait(TaskBase* const task) noexcept {
+  ThreadPool::awaitTask(task);
 }
 
 }  // namespace Internal

@@ -1,8 +1,8 @@
 #ifndef TW_BM_HELPERS_H
 #define TW_BM_HELPERS_H
+#include <threadweave/internal/utils.h>
 #include <benchmark/benchmark.h>
 #include <threadweave/ThreadPool.h>
-#include <threadweave/utils.h>
 
 #include <limits>
 #include <random>
