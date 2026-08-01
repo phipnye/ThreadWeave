@@ -4,6 +4,7 @@
 #include <threadweave/internal/utils.h>
 
 #include <atomic>
+#include <stdexcept>
 #include <thread>
 
 namespace ThreadWeave::Internal {
@@ -62,6 +63,9 @@ class ThreadHazardManager {
    * Retrieve this managers's `idx`th hazard pointer
    * @param idx index of the manager's hazard pointer to retrieve
    * @return managers's `idx`th hazard pointer
+   * @note Not marked as const because logically this is not const, the caller
+   * retrieves an unprotected reference and likely will use it to store a new
+   * memory address
    */
   std::atomic<void*>& getPointer(Index idx) noexcept;
 
@@ -73,19 +77,107 @@ class ThreadHazardManager {
   static bool isPointerInUse(const void* nodePtr) noexcept;
 };
 
+inline ThreadHazardManager::ThreadHazardManager() : poolIdx_{kMaxThreads} {
+  // Search for the first available slot in our thread slot pool
+  for (Index i{0}; i < kMaxThreads; ++i) {
+    // Check ith slot to see if it's been claimed yet
+    auto& [id, ptrs]{slotsPool[i]};
+
+    // If the ID is unset, claim this slot and store this thread's ID
+    if (std::thread::id emptyId{}; id.compare_exchange_strong(
+            emptyId, std::this_thread::get_id(), MemoryOrder::acquire,
+            MemoryOrder::relaxed)) {
+      poolIdx_ = i;
+      break;
+    }
+  }
+
+  // There are no available thread slots for the current thread, throw a
+  // runtime error
+  if (poolIdx_ == kMaxThreads) {
+    throw std::runtime_error{"No available hazard pointers"};
+  }
+}
+
+inline ThreadHazardManager::~ThreadHazardManager() {
+  // Clear the hazard pointers before clearing the ID so other threads can use
+  // this thread slot
+  TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
+            "Attempting to destroy uninitialized manager slot");
+  auto& [id, ptrs]{slotsPool[poolIdx_]};
+
+  for (auto& ptr : ptrs) {
+    ptr.store(nullptr, MemoryOrder::relaxed);
+  }
+
+#ifndef TW_NDEBUG
+  for (const auto& ptr : ptrs) {
+    TW_ASSERT(ptr.load(MemoryOrder::relaxed) == nullptr,
+              "Hazard pointer failed to clear during slot release");
+  }
+#endif
+
+  id.store(std::thread::id{}, MemoryOrder::release);
+}
+
+inline std::atomic<void*>& ThreadHazardManager::getPointer(
+    const Index idx) noexcept {
+  TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
+            "Invalid or uninitialized poolIdx_ in ThreadHazardManager");
+  TW_ASSERT(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
+            "Hazard slot index out of bounds");
+  return slotsPool[poolIdx_].ptr[idx];
+}
+
+inline bool ThreadHazardManager::isPointerInUse(
+    const void* const nodePtr) noexcept {
+  if (!nodePtr) [[unlikely]] {
+    return false;
+  }
+
+  // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard.
+  // Without this, the removal that makes nodePtr eligible for recycling
+  // (e.g. the CAS or exchange that unlinks it) and this scan are only ordered
+  // by acquire/release, which permits an interleaving where a thread's
+  // hazard-slot publish is invisible and thus both threads see stale memory
+  // causing an ABA issue
+  std::atomic_thread_fence(MemoryOrder::seq_cst);
+
+  for (const auto& [id, ptrs] : slotsPool) {
+    // Empty id indicates no use
+    if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {
+      continue;
+    }
+
+    // Otherwise, check if any pointers point to same memory location
+    for (const auto& ptr : ptrs) {
+      if (ptr.load(MemoryOrder::acquire) == nodePtr) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 /**
  * Get current thread's `idx`th hazard pointer
  * @param idx index of the current thread's hazard pointer to retrieve
  * @return current thread's `idx`th hazard pointer
  */
-std::atomic<void*>& getThreadHazardPointer(Index idx);
+inline std::atomic<void*>& getThreadHazardPointer(const Index idx) {
+  thread_local ThreadHazardManager manager{};
+  return manager.getPointer(idx);
+}
 
 /**
  * Check if any threads are using node
  * @param nodePtr pointer to the node we want to check
  * @return true if nodePtr is used by any thread and false otherwise
  */
-bool anyThreadsUsingNode(const void* nodePtr) noexcept;
+inline bool anyThreadsUsingNode(const void* nodePtr) noexcept {
+  return ThreadHazardManager::isPointerInUse(nodePtr);
+}
 
 /**
  * RAII guard for acquiring a pointer with hazard indicating use and a

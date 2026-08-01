@@ -12,24 +12,18 @@
 
 namespace ThreadWeave {
 
-namespace Internal {
-
-/**
- * Bridge function defined in ThreadPool.cpp to allow thread workers to continue
- * working without blocking waits while waiting for a result
- * @param task a pointer to the task to wait on
- */
-void helpWait(TaskBase* task) noexcept;
-
-}  // namespace Internal
+// Forward declare ThreadPool so we can use it as a default policy type
+class ThreadPool;
 
 /**
  * A template class providing a mechanism to retrieve results from an
  * asynchronous operation
  * @tparam T A generic type indicating the return type of the asynchronous
  * operation
+ * @tparam WaitPolicy A class instance (generally a thread pool) that defines
+ * defines how to await for a task
  */
-template <typename T>
+template <typename T, typename WaitPolicy = ThreadPool>
 class Future {
   // --- Data members
   using Task = Internal::Task<T>;
@@ -103,22 +97,23 @@ class Future {
   static void retireTaskNode(Task* task);
 };
 
-template <typename T>
-Future<T>::Future(Task* const task) : task_{task} {
+template <typename T, typename WaitPolicy>
+Future<T, WaitPolicy>::Future(Task* const task) : task_{task} {
   TW_ASSERT(task != nullptr, "Future ctor received a null node");
 }
 
-template <typename T>
-Future<T>::~Future() {
+template <typename T, typename WaitPolicy>
+Future<T, WaitPolicy>::~Future() {
   retireTaskNode(task_);
 }
 
-template <typename T>
-Future<T>::Future(Future&& other) noexcept
+template <typename T, typename WaitPolicy>
+Future<T, WaitPolicy>::Future(Future&& other) noexcept
     : task_{std::exchange(other.task_, nullptr)} {}
 
-template <typename T>
-Future<T>& Future<T>::operator=(Future&& other) noexcept {
+template <typename T, typename WaitPolicy>
+Future<T, WaitPolicy>& Future<T, WaitPolicy>::operator=(
+    Future&& other) noexcept {
   if (this != &other) {
     // Before acquiring other task, mark this future as no longer using it
     retireTaskNode(task_);
@@ -128,8 +123,8 @@ Future<T>& Future<T>::operator=(Future&& other) noexcept {
   return *this;
 }
 
-template <typename T>
-void Future<T>::wait() noexcept {
+template <typename T, typename WaitPolicy>
+void Future<T, WaitPolicy>::wait() noexcept {
   TW_ASSERT(task_ != nullptr,
             "Cannot call wait() on an uninitialized, invalid, or "
             "already-consumed Future");
@@ -138,11 +133,11 @@ void Future<T>::wait() noexcept {
   // about the calling thread to determine if it's a worker. If it's a worker,
   // we want it to continue doing work so the pool does not become starved if
   // tasks submit new tasks
-  Internal::helpWait(task_);
+  WaitPolicy::awaitTask(task_);
 }
 
-template <typename T>
-T Future<T>::get() {
+template <typename T, typename WaitPolicy>
+T Future<T, WaitPolicy>::get() {
   TW_ASSERT(task_ != nullptr,
             "Cannot call get() on an uninitialized, invalid, or "
             "already-consumed Future");
@@ -192,8 +187,8 @@ T Future<T>::get() {
   }
 }
 
-template <typename T>
-void Future<T>::retireTaskNode(Task* const task) {
+template <typename T, typename WaitPolicy>
+void Future<T, WaitPolicy>::retireTaskNode(Task* const task) {
   if (task && task->releaseReference()) {
     Allocator::deallocate(task);
   }
