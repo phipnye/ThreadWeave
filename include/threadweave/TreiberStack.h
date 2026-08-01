@@ -1,9 +1,9 @@
 #ifndef TW_TREIBER_STACK_H
 #define TW_TREIBER_STACK_H
 
-#include <threadweave/Hazard.h>
-#include <threadweave/NodeAllocator.h>
+#include <threadweave/internal/Hazard.h>
 #include <threadweave/internal/Node.h>
+#include <threadweave/internal/NodeAllocator.h>
 #include <threadweave/internal/utils.h>
 
 #include <atomic>

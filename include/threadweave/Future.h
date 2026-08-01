@@ -1,7 +1,7 @@
 #ifndef TW_FUTURE_H
 #define TW_FUTURE_H
 
-#include <threadweave/NodeAllocator.h>
+#include <threadweave/internal/NodeAllocator.h>
 #include <threadweave/internal/Task.h>
 #include <threadweave/internal/utils.h>
 

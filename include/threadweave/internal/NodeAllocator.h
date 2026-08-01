@@ -1,7 +1,7 @@
 #ifndef TW_NODE_ALLOCATOR_H
 #define TW_NODE_ALLOCATOR_H
 
-#include <threadweave/Hazard.h>
+#include <threadweave/internal/Hazard.h>
 #include <threadweave/internal/Node.h>
 #include <threadweave/internal/utils.h>
 
