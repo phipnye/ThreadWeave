@@ -1,190 +1,226 @@
 #include <gtest/gtest.h>
-#include <threadweave/ThreadPool.h>
 #include <threadweave/Future.h>
+#include <threadweave/ThreadPool.h>
+#include <threadweave/internal/NodeAllocator.h>
 #include <threadweave/internal/Task.h>
 #include <threadweave/internal/utils.h>
 
 #include <atomic>
+#include <chrono>
 #include <exception>
 #include <new>
 #include <stdexcept>
+#include <thread>
 #include <utility>
+#include <vector>
 
 using namespace ThreadWeave;
 
-struct HelpWait {
-  Internal::TaskBase* lastHelpedTask{nullptr};
-  int helpWaitCount{0};
+template <typename T>
+Internal::Task<T>* allocateTask() {
+  return Internal::NodeAllocator<Internal::Task<T>>::allocate();
+}
 
-  void operator()(Internal::TaskBase* const task) noexcept {
-    lastHelpedTask = task;
-    ++helpWaitCount;
+// Marks a task complete with a stored value and releases the simulated thread
+// pool's hold on the reference count, mirroring what a worker does once it
+// finishes running a task (store result, notify waiters, and then give up its
+// reference)
+template <typename T>
+void completeWithValue(Internal::Task<T>* const task, T value) {
+  ::new (static_cast<void*>(task->resultStorage_)) T{std::move(value)};
+  task->hasResult_ = true;
+  task->notify();
+  task->releaseReference();
+}
 
-    if (task) {
-      task->notify();
-    }
-  }
-};
+void completeVoidTask(Internal::Task<void>* const task) {
+  task->notify();
+  task->releaseReference();
+}
 
 template <typename T>
-struct NodeAllocator {
-  static inline int deallocateCount{0};
-  static inline T* lastDeallocated{nullptr};
+void completeWithException(Internal::Task<T>* const task,
+                           std::exception_ptr ex) {
+  task->exception_ = std::move(ex);
+  task->notify();
+  task->releaseReference();
+}
 
-  static void deallocate(T* const ptr) noexcept {
-    ++deallocateCount;
-    lastDeallocated = ptr;
-    delete ptr;
-  }
-};
+#ifndef TW_NDEBUG
+TEST(FutureTests, ConstructionAssertsOnNullTask) {
+  EXPECT_DEATH({ Future<int> f{nullptr}; }, "null node");
+}
+#endif
 
-struct MoveOnlyTracker {
-  static inline int dtorCnt{0};
-  int val_{0};
+TEST(FutureTests, GetReturnsStoredValueForReadyTask) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, val);
+  Future<int> f{task};
+  EXPECT_EQ(f.get(), val);
+}
 
-  explicit MoveOnlyTracker(const int val = 0) : val_{val} {}
+TEST(FutureTests, GetOnVoidTask) {
+  auto* const task{allocateTask<void>()};
+  completeVoidTask(task);
+  Future<void> f{task};
+  f.get();
+  SUCCEED();
+}
 
-  ~MoveOnlyTracker() {
-    ++dtorCnt;
-  }
+TEST(FutureTests, GetRethrowsStoredException) {
+  auto* const task{allocateTask<int>()};
+  completeWithException<int>(
+      task, std::make_exception_ptr(std::runtime_error{"Error"}));
+  Future<int> f{task};
+  EXPECT_THROW({ f.get(); }, std::runtime_error);
+}
 
-  MoveOnlyTracker(const MoveOnlyTracker&) = delete;
-  MoveOnlyTracker& operator=(const MoveOnlyTracker&) = delete;
+TEST(FutureTests, GetRethrowsStoredExceptionForVoidTask) {
+  auto* const task{allocateTask<void>()};
+  completeWithException<void>(
+      task, std::make_exception_ptr(std::runtime_error{"Error"}));
+  Future<void> f{task};
+  EXPECT_THROW({ f.get(); }, std::runtime_error);
+}
 
-  MoveOnlyTracker(MoveOnlyTracker&& other) noexcept : val_{other.val_} {
-    other.val_ = -1;
-  }
+TEST(FutureTests, WaitReturnsImmediatelyIfTaskAlreadyReady) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, val);
+  Future<int> f{task};
+  f.wait();
+  EXPECT_EQ(f.get(), val);
+}
 
-  MoveOnlyTracker& operator=(MoveOnlyTracker&& other) noexcept {
-    if (this != &other) {
-      val_ = other.val_;
-      other.val_ = -1;
-    }
+TEST(FutureTests, WaitBlocksUntilTaskCompletes) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  Future<int> f{task};
+  std::jthread completer([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    completeWithValue<int>(task, val);
+  });
+  f.wait();
+  EXPECT_EQ(f.get(), val);
+}
 
-    return *this;
-  }
-};
+TEST(FutureTests, GetBlocksUntilTaskCompletes) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  Future<int> f{task};
+  std::jthread completer([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    completeWithValue<int>(task, val);
+  });
+  EXPECT_EQ(f.get(), val);
+}
 
-TEST(FutureTest, GetReturnsValueAndRetiresTask) {
-  constexpr HelpWait helpWait{};
-  auto* const task{new Internal::Task<int>{}};
-  constexpr int expectedVal{42};
-  new (task->resultStorage_) int{expectedVal};
-  task->hasResult_ = true;
-  Future<int> fut{task};
-  const int actualVal{fut.get()};
-  EXPECT_EQ(actualVal, expectedVal);
-  EXPECT_FALSE(task->hasResult_);
+TEST(FutureTests, MoveConstructTransfersOwnership) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, val);
+  Future<int> f1{task};
+  Future<int> f2{std::move(f1)};
+  EXPECT_EQ(f2.get(), val);
+}
+
+#ifndef TW_NDEBUG
+TEST(FutureTests, UsingAMovedFromFutureAsserts) {
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, 1);
+  Future<int> f1{task};
+  Future<int> f2{std::move(f1)};
+  EXPECT_DEATH({ f1.wait(); }, "uninitialized");
+  f2.get();
+}
+#endif
+
+TEST(FutureTests, MoveAssignReleasesPreviousTaskAndAdoptsNewOne) {
+  constexpr int val1{1};
+  constexpr int val2{2};
+  auto* const task1{allocateTask<int>()};
+  completeWithValue<int>(task1, val1);
+  auto* const task2{allocateTask<int>()};
+  completeWithValue<int>(task2, val2);
+  Future<int> f1{task1};
+  Future<int> f2{task2};
+  f1 = std::move(f2);
+  EXPECT_EQ(f1.get(), val2);
+}
+
+#ifndef TW_NDEBUG
+TEST(FutureTests, MoveAssignLeavesSourceEmpty) {
+  auto* const task1{allocateTask<int>()};
+  completeWithValue<int>(task1, 1);
+  auto* const task2{allocateTask<int>()};
+  completeWithValue<int>(task2, 2);
+  Future<int> f1{task1};
+  Future<int> f2{task2};
+  f1 = std::move(f2);
+  EXPECT_DEATH({ f2.wait(); }, "uninitialized");
+  f1.get();
+}
+#endif
+
+TEST(FutureTests, SelfMovingIsSafe) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, val);
+  Future<int> f{task};
+  Future<int>& fRef{f};
+  f = std::move(fRef);
+  EXPECT_EQ(f.get(), val);
+}
+
+TEST(FutureTests, DtorRetiresTaskWithoutCallingGet) {
+  constexpr int val{42};
+  auto* const task{allocateTask<int>()};
+  completeWithValue<int>(task, val);
+  { Future<int> f{task}; }
+  SUCCEED();
+}
+
+TEST(FutureTests, DroppingFutureBeforeTaskCompletesDoesNotDeallocate) {
+  auto* const task{allocateTask<int>()};
+
+  { Future<int> f{task}; }
+
+  // refCount_: 2 -> 1 after the future retires; the pool's hold remains, so the
+  // node should not have been deallocated yet
   EXPECT_EQ(task->refCount_.load(MemoryOrder::relaxed), 1);
-  EXPECT_EQ(helpWait.helpWaitCount, 1);
-  EXPECT_EQ(helpWait.lastHelpedTask, task);
-  delete task;
+  EXPECT_TRUE(task->releaseReference());
+  Internal::NodeAllocator<Internal::Task<int>>::deallocate(task);
 }
 
-TEST(FutureTest, GetMovesAndDestroysInPlaceForNonCopyableTypes) {
-  MoveOnlyTracker::dtorCnt = 0;
-  auto* const task{new Internal::Task<MoveOnlyTracker>{}};
-  new (task->resultStorage_) MoveOnlyTracker{100};
-  task->hasResult_ = true;
-  Future<MoveOnlyTracker> fut{task};
-  MoveOnlyTracker res{fut.get()};
-  EXPECT_EQ(res.val_, 100);
-  EXPECT_FALSE(task->hasResult_);
-  EXPECT_EQ(MoveOnlyTracker::dtorCnt, 1);
-  delete task;
-}
+TEST(FutureTests, FuturesUnderReuse) {
+  // Exercises allocate/complete/get/deallocate repeatedly to help surface any
+  // node-recycling or reference-counting bugs via the NodeAllocator free list
+  constexpr int nIterations{2'000};
 
-TEST(FutureTest, VoidFutureGetSupport) {
-  HelpWait helpWait;
-  auto* const task{new Internal::Task<void>{}};
-  task->hasResult_ = true;
-  Future<void> fut{task};
-  fut.get();
-  EXPECT_EQ(task->refCount_.load(MemoryOrder::relaxed), 1);
-  EXPECT_EQ(helpWait.helpWaitCount, 1);
-  delete task;
-}
-
-TEST(FutureTest, GetRethrowsStoredExceptionAndRetiresTask) {
-  auto* const task{new Internal::Task<int>{}};
-
-  try {
-    throw std::runtime_error{"Execution failure"};
-  } catch (...) {
-    task->exception_ = std::current_exception();
+  for (int i{0}; i < nIterations; ++i) {
+    auto* const task{allocateTask<int>()};
+    completeWithValue<int>(task, i);
+    Future<int> f{task};
+    EXPECT_EQ(f.get(), i);
   }
-
-  Future<int> fut{task};
-  EXPECT_THROW(fut.get(), std::runtime_error);
-  EXPECT_EQ(task->refCount_.load(MemoryOrder::relaxed), 1);
-  EXPECT_EQ(task->exception_, nullptr);
-  delete task;
 }
 
-TEST(FutureTest, WaitCallsHelpWaitWithoutConsumingTask) {
-  HelpWait helpWait;
-  Internal::Task<int> task{};
-  Future<int> fut{&task};
-  fut.wait();
-  EXPECT_EQ(helpWait.helpWaitCount, 1);
-  EXPECT_EQ(helpWait.lastHelpedTask, &task);
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 2);
-}
+TEST(FutureTests, ConcurretFuturesSeeTheirOwnValue) {
+  constexpr int nThreads{8};
+  constexpr int nPerThread{500};
+  std::vector<std::jthread> threads{};
+  threads.reserve(nThreads);
 
-TEST(FutureTest, MoveConstructorTransfersTaskOwnership) {
-  Internal::Task<int> task{};
-  new (task.resultStorage_) int{99};
-  task.hasResult_ = true;
-  Future<int> srcFut{&task};
-  Future<int> dstFut{std::move(srcFut)};
-  const int val{dstFut.get()};
-  EXPECT_EQ(val, 99);
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 1);
-}
-
-TEST(FutureTest, MoveAssignmentRetiresOldTaskAndStealsNewTask) {
-  Internal::Task<int> oldTask{};
-  Internal::Task<int> newTask{};
-  new (newTask.resultStorage_) int{777};
-  newTask.hasResult_ = true;
-  Future<int> fut1{&oldTask};
-  Future<int> fut2{&newTask};
-  fut1 = std::move(fut2);
-  EXPECT_EQ(oldTask.refCount_.load(MemoryOrder::relaxed), 1);
-  const int val{fut1.get()};
-  EXPECT_EQ(val, 777);
-  EXPECT_EQ(newTask.refCount_.load(MemoryOrder::relaxed), 1);
-}
-
-// TEST(FutureTest, SelfMoveAssignmentIsNoOp) {
-//   Internal::Task<int> task{};
-//   new (task.resultStorage_) int{123};
-//   task.hasResult_ = true;
-//   Future<int> fut{&task};
-//   fut = std::move(fut);
-//   const int val{fut.get()};
-//   EXPECT_EQ(val, 123);
-// }
-
-TEST(FutureTest, DestructorRetiresTaskWhenUnconsumed) {
-  Internal::Task<int> task{};
-
-  {
-    Future<int> fut{&task};
-    EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 2);
+  for (int t{0}; t < nThreads; ++t) {
+    threads.emplace_back([&, t] {
+      for (int i{0}; i < nPerThread; ++i) {
+        const int value{t * nPerThread + i};
+        auto* const task{allocateTask<int>()};
+        completeWithValue<int>(task, value);
+        Future<int> f{task};
+        EXPECT_EQ(f.get(), value);
+      }
+    });
   }
-
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 1);
-}
-
-TEST(FutureTest, DeallocatesNodeWhenLastReferenceIsReleased) {
-  NodeAllocator<Internal::Task<int>>::deallocateCount = 0;
-  NodeAllocator<Internal::Task<int>>::lastDeallocated = nullptr;
-  auto* const task{new Internal::Task<int>{}};
-  task->refCount_.store(1, MemoryOrder::relaxed);
-
-  { Future<int> fut{task}; }
-
-  EXPECT_EQ(NodeAllocator<Internal::Task<int>>::deallocateCount, 1);
-  EXPECT_EQ(NodeAllocator<Internal::Task<int>>::lastDeallocated, task);
 }

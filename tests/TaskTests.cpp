@@ -12,154 +12,237 @@
 
 using namespace ThreadWeave;
 
-struct DestructorCounter {
-  static inline int dtorCnt{0};
-  ~DestructorCounter() {
-    ++dtorCnt;
+struct DestructionCounter {
+  static inline std::atomic<int> liveCount{0};
+  static inline std::atomic<int> destructCount{0};
+  int value{0};
+
+  explicit DestructionCounter(const int val = 0) : value{val} {
+    liveCount.fetch_add(1, MemoryOrder::relaxed);
+  }
+
+  DestructionCounter(const DestructionCounter& other) : value{other.value} {
+    liveCount.fetch_add(1, MemoryOrder::relaxed);
+  }
+
+  ~DestructionCounter() {
+    liveCount.fetch_sub(1, MemoryOrder::relaxed);
+    destructCount.fetch_add(1, MemoryOrder::relaxed);
+  }
+
+  static void reset() {
+    liveCount.store(0, MemoryOrder::relaxed);
+    destructCount.store(0, MemoryOrder::relaxed);
   }
 };
 
-TEST(TaskTests, ResetDestroysObject) {
-  DestructorCounter::dtorCnt = 0;
-  Internal::Task<DestructorCounter> task{};
-  new (task.resultStorage_) DestructorCounter{};
-  task.hasResult_ = true;
-  task.reset();
-  EXPECT_EQ(DestructorCounter::dtorCnt, 1);
-  EXPECT_FALSE(task.hasResult_);
+Internal::TaskBase* g_lastExecutedWith{nullptr};
+void recordExecution(Internal::TaskBase* self) {
+  g_lastExecutedWith = self;
 }
 
-TEST(TaskTests, ResetRestoresInitialState) {
-  Internal::Task<int> task{};
-  task.exception_ = std::make_exception_ptr(std::runtime_error{"error"});
-  task.execute_ = [](Internal::TaskBase*) {};
-  task.releaseReference();
-  task.reset();
-  EXPECT_EQ(task.exception_, nullptr);
-  EXPECT_EQ(task.execute_, nullptr);
-  EXPECT_FALSE(task.isReady());
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 2);
+TEST(TaskTests, DefaultStateIsPending) {
+  const Internal::Task<int> t{};
+  EXPECT_FALSE(t.isReady());
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 2);
+  EXPECT_EQ(t.execute_, nullptr);
 }
 
-TEST(TaskTests, ReleaseReferenceSignalsZero) {
-  Internal::Task<int> task{};
-  EXPECT_FALSE(task.releaseReference());
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 1);
-  EXPECT_TRUE(task.releaseReference());
-  EXPECT_EQ(task.refCount_.load(MemoryOrder::relaxed), 0);
+TEST(TaskTests, NotifyMarksTaskReady) {
+  Internal::Task<int> t{};
+  EXPECT_FALSE(t.isReady());
+  t.notify();
+  EXPECT_TRUE(t.isReady());
+}
+
+TEST(TaskTests, DoubleNotifyIsSafe) {
+  Internal::Task<int> t{};
+  t.notify();
+  EXPECT_TRUE(t.isReady());
+  t.notify();  // second call should be safe
+  EXPECT_TRUE(t.isReady());
+}
+
+TEST(TaskTests, ReadyWaitReturnsImmediately) {
+  Internal::Task<int> t{};
+  t.notify();
+  t.wait();  // must not block
+  EXPECT_TRUE(t.isReady());
 }
 
 TEST(TaskTests, WaitBlocksUntilNotify) {
-  Internal::Task<int> task{};
-  constexpr int val{42};
+  Internal::Task<int> t{};
+  std::atomic<bool> waitReturned{false};
 
-  std::thread worker{[&task] {
-    std::this_thread::sleep_for(std::chrono::milliseconds{10});
-    new (task.resultStorage_) int{val};
-    task.hasResult_ = true;
-    task.notify();
-  }};
+  std::jthread waiter([&] {
+    t.wait();
+    waitReturned.store(true, MemoryOrder::release);
+  });
 
-  task.wait();
-  EXPECT_TRUE(task.isReady());
-  EXPECT_TRUE(task.hasResult_);
-  EXPECT_EQ(*std::launder(reinterpret_cast<int*>(task.resultStorage_)), val);
-  worker.join();
+  std::this_thread::sleep_for(std::chrono::milliseconds{20});
+  EXPECT_FALSE(waitReturned.load(MemoryOrder::acquire));
+  t.notify();
+  waiter.join();
+  EXPECT_TRUE(waitReturned.load(MemoryOrder::acquire));
 }
 
-TEST(TaskTests, ConcurrentReleaseReferenceReturnsTrueOnce) {
-  auto* const task{new Internal::Task<int>{}};
-  std::atomic<int> trueCount{0};
+TEST(TaskTests, MultipleWaitersAllUnblockOnNotify) {
+  constexpr int nWaiters{8};
+  Internal::Task<int> t{};
+  std::atomic<int> returnedCount{0};
+  std::vector<std::jthread> waiters{};
+  waiters.reserve(nWaiters);
 
-  auto worker{[&] {
-    if (task->releaseReference()) {
-      trueCount.fetch_add(1, MemoryOrder::relaxed);
-    }
-  }};
+  for (int i{0}; i < nWaiters; ++i) {
+    waiters.emplace_back([&] {
+      t.wait();
+      returnedCount.fetch_add(1, MemoryOrder::relaxed);
+    });
+  }
 
-  std::thread t1{worker};
-  std::thread t2{worker};
-  t1.join();
-  t2.join();
-  EXPECT_EQ(trueCount.load(MemoryOrder::relaxed), 1);
-  delete task;
+  std::this_thread::sleep_for(std::chrono::milliseconds{20});
+  t.notify();
+  waiters.clear();
+  EXPECT_EQ(returnedCount.load(MemoryOrder::relaxed), nWaiters);
 }
 
-TEST(TaskTests, DestructorCleansResultWithoutReset) {
-  DestructorCounter::dtorCnt = 0;
+TEST(TaskTests, ReleaseReferenceWorks) {
+  Internal::Task<int> t{};
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 2);
+  EXPECT_FALSE(t.releaseReference());  // 2 -> 1, not last holder
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 1);
+  EXPECT_TRUE(t.releaseReference());  // 1 -> 0, last holder
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 0);
+}
+
+TEST(TaskTests, ReleaseReferenceHasExactlyOneLastHolder) {
+  constexpr int nExtraHolders{6};
+  Internal::Task<int> t{};
+  t.refCount_.store(nExtraHolders + 1, MemoryOrder::relaxed);
+  std::atomic<int> lastHolderCount{0};
+  std::vector<std::jthread> holders{};
+  holders.reserve(nExtraHolders + 1);
+
+  for (int i{0}; i < nExtraHolders + 1; ++i) {
+    holders.emplace_back([&] {
+      if (t.releaseReference()) {
+        lastHolderCount.fetch_add(1, MemoryOrder::relaxed);
+      }
+    });
+  }
+
+  holders.clear();
+  EXPECT_EQ(lastHolderCount.load(MemoryOrder::relaxed), 1);
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 0);
+}
+
+#ifndef TW_NDEBUG
+TEST(TaskTests, DoubleReleaseTriggersAssertion) {
+  Internal::Task<int> t{};
+  EXPECT_FALSE(t.releaseReference());
+  EXPECT_TRUE(t.releaseReference());
+  EXPECT_DEATH({ t.releaseReference(); }, "Double-release detected");
+}
+#endif
+
+TEST(TaskTests, DefaultConstructedTaskHasExpectedState) {
+  const Internal::Task<int> t{};
+  EXPECT_FALSE(t.hasResult_);
+  EXPECT_EQ(t.execute_, nullptr);
+  EXPECT_EQ(t.exception_, nullptr);
+  EXPECT_FALSE(t.isReady());
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 2);
+}
+
+TEST(TaskTests, ExecuteIsInvokedWithTaskPointer) {
+  Internal::Task<int> t{};
+  g_lastExecutedWith = nullptr;
+  t.execute_ = &recordExecution;
+  ASSERT_NE(t.execute_, nullptr);
+  t.execute_(&t);
+  EXPECT_EQ(g_lastExecutedWith, static_cast<Internal::TaskBase*>(&t));
+}
+
+TEST(TaskTests, DtorDestroysStoredNonTrivialResult) {
+  DestructionCounter::reset();
 
   {
-    Internal::Task<DestructorCounter> task{};
-    new (task.resultStorage_) DestructorCounter{};
-    task.hasResult_ = true;
-  }
+    static_assert(!std::is_trivially_destructible_v<DestructionCounter>,
+                  "DestructionCounter cannot be trivially destructible for "
+                  "this test to work properly.");
+    Internal::Task<DestructionCounter> t{};
+    ::new (static_cast<void*>(t.resultStorage_)) DestructionCounter{};
+    t.hasResult_ = true;
+    EXPECT_EQ(DestructionCounter::liveCount.load(MemoryOrder::relaxed), 1);
+  }  // dtor should call destroyResults() for non - trivial type
 
-  EXPECT_EQ(DestructorCounter::dtorCnt, 1);
+  EXPECT_EQ(DestructionCounter::liveCount.load(MemoryOrder::relaxed), 0);
+  EXPECT_EQ(DestructionCounter::destructCount.load(MemoryOrder::relaxed), 1);
 }
 
-TEST(TaskTests, VoidTaskSupport) {
-  Internal::Task<void> task{};
-  task.hasResult_ = true;
-  task.reset();
-  EXPECT_FALSE(task.hasResult_);
-}
-
-TEST(TaskTests, WaitReturnsImmediatelyIfReady) {
-  // Ensures wait doesn't block or hit state.wait() if already in ready state
-  Internal::Task<int> task{};
-  task.notify();
-  task.wait();
-  EXPECT_TRUE(task.isReady());
-}
-
-TEST(TaskTests, DestructorSkippedWhenHasResultIsFalse) {
-  DestructorCounter::dtorCnt = 0;
+TEST(TaskTests, DtorSkipsDestructionWhenNoResult) {
+  DestructionCounter::reset();
 
   {
-    Internal::Task<DestructorCounter> task{};
-    task.hasResult_ = false;
+    const Internal::Task<DestructionCounter> t{};
+    EXPECT_FALSE(t.hasResult_);
   }
 
-  EXPECT_EQ(DestructorCounter::dtorCnt, 0);
+  EXPECT_EQ(DestructionCounter::destructCount.load(MemoryOrder::relaxed), 0);
 }
 
-TEST(TaskTests, StorageAlignmentMatchesConstraints) {
-  Internal::Task<double> task{};
-  const auto callableAddr{
-      reinterpret_cast<std::uintptr_t>(task.callableStorage_)};
-  const auto resultAddr{reinterpret_cast<std::uintptr_t>(task.resultStorage_)};
-  EXPECT_EQ(callableAddr % alignof(std::max_align_t), 0u);
-  EXPECT_EQ(resultAddr % alignof(double), 0u);
+TEST(TaskTests, ResetClearsDataProperly) {
+  Internal::Task<int> t{};
+  t.execute_ = &recordExecution;
+  t.exception_ = std::make_exception_ptr(std::runtime_error{"Error"});
+  t.releaseReference();  // refCount_: 2 -> 1
+  t.notify();            // state_: pending -> ready
+  ASSERT_NE(t.execute_, nullptr);
+  ASSERT_NE(t.exception_, nullptr);
+  ASSERT_EQ(t.refCount_.load(MemoryOrder::relaxed), 1);
+  ASSERT_TRUE(t.isReady());
+  t.reset();
+  EXPECT_EQ(t.execute_, nullptr);
+  EXPECT_EQ(t.exception_, nullptr);
+  EXPECT_EQ(t.refCount_.load(MemoryOrder::relaxed), 2);
+  EXPECT_FALSE(t.isReady());
+  EXPECT_FALSE(t.hasResult_);
 }
 
-TEST(TaskTests, ExecuteFunctionPointerInvocation) {
-  Internal::Task<int> task{};
-  constexpr int val{42};
-
-  task.execute_ = [](Internal::TaskBase* base) {
-    auto* const self{static_cast<Internal::Task<int>*>(base)};
-    new (self->resultStorage_) int{val};
-    self->hasResult_ = true;
-    self->notify();
-  };
-
-  task.execute_(&task);
-  EXPECT_TRUE(task.isReady());
-  EXPECT_TRUE(task.hasResult_);
-  EXPECT_EQ(*std::launder(reinterpret_cast<int*>(task.resultStorage_)), val);
+TEST(TaskTests, DuplicateResetsAreSafe) {
+  Internal::Task<int> t{};
+  t.reset();
+  t.reset();
+  EXPECT_FALSE(t.hasResult_);
+  EXPECT_FALSE(t.isReady());
 }
 
-TEST(TaskTests, ExceptionPropagation) {
-  Internal::Task<int> task{};
+TEST(TaskTests, TriviallyDestructibleDoesNotCallDtor) {
+  DestructionCounter::reset();
+  Internal::Task<int> t{};
+  ::new (static_cast<void*>(t.resultStorage_)) int{};
+  t.hasResult_ = true;
+  t.reset();
+  EXPECT_FALSE(t.hasResult_);
+  EXPECT_EQ(DestructionCounter::destructCount.load(MemoryOrder::relaxed), 0);
+}
 
-  try {
-    throw std::runtime_error{"Test error"};
-  } catch (...) {
-    task.exception_ = std::current_exception();
-  }
+TEST(TaskTests, VoidTask) {
+  Internal::Task<void> t{};
+  EXPECT_FALSE(t.hasResult_);
+  t.hasResult_ = true;
+  t.reset();
+  EXPECT_FALSE(t.hasResult_);
+  EXPECT_FALSE(t.isReady());
+}
 
-  task.notify();
-  EXPECT_TRUE(task.isReady());
-  ASSERT_NE(task.exception_, nullptr);
-  EXPECT_THROW(std::rethrow_exception(task.exception_), std::runtime_error);
+TEST(TaskTests, MultipleTasksAreIndependent) {
+  Internal::Task<int> a{};
+  Internal::Task<int> b{};
+  a.notify();
+  EXPECT_TRUE(a.isReady());
+  EXPECT_FALSE(b.isReady());
+  a.releaseReference();
+  EXPECT_EQ(a.refCount_.load(MemoryOrder::relaxed), 1);
+  EXPECT_EQ(b.refCount_.load(MemoryOrder::relaxed), 2);
 }

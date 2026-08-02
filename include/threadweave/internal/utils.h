@@ -40,8 +40,8 @@ inline constexpr Index kMaxThreads{32};
 #endif
 
 // Custom assertions
-inline void twAssert(const char* expr, const char* file, const int line,
-                     const char* msg) {
+inline void assertionFailure(const char* expr, const char* file, const int line,
+                             const char* msg) {
   std::cerr << "Assertion Failed: (" << expr << ")\n"
             << "File: " << file << ", Line: " << line << "\n";
 
@@ -80,11 +80,11 @@ inline constexpr std::memory_order seq_cst = std::memory_order_seq_cst;
   do {                     \
     __VA_ARGS__            \
   } while (0)
-#define TW_ASSERT(expr, msg)                                           \
-  do {                                                                 \
-    if (!(expr)) {                                                     \
-      ThreadWeave::Internal::twAssert(#expr, __FILE__, __LINE__, msg); \
-    }                                                                  \
+#define TW_ASSERT(expr, msg)                                                   \
+  do {                                                                         \
+    if (!(expr)) {                                                             \
+      ThreadWeave::Internal::assertionFailure(#expr, __FILE__, __LINE__, msg); \
+    }                                                                          \
   } while (0)
 #else
 #define TW_DEBUG_ONLY(...) ((void)0)

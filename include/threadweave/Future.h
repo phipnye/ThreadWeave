@@ -20,8 +20,8 @@ class ThreadPool;
  * asynchronous operation
  * @tparam T A generic type indicating the return type of the asynchronous
  * operation
- * @tparam WaitPolicy A class instance (generally a thread pool) that defines
- * defines how to await for a task
+ * @tparam WaitPolicy A class (generally a thread pool) that defines how to
+ * await a task
  */
 template <typename T, typename WaitPolicy = ThreadPool>
 class Future {
