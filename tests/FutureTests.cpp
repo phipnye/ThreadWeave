@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <threadweave/ThreadPool.h>
 #include <threadweave/Future.h>
 #include <threadweave/internal/Task.h>
 #include <threadweave/internal/utils.h>
