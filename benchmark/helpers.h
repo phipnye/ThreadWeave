@@ -1,9 +1,12 @@
 #ifndef TW_BM_HELPERS_H
 #define TW_BM_HELPERS_H
-#include <threadweave/internal/utils.h>
 #include <benchmark/benchmark.h>
 #include <threadweave/ThreadPool.h>
+#include <threadweave/internal/utils.h>
 
+#include <algorithm>
+#include <functional>
+#include <iterator>
 #include <limits>
 #include <random>
 
@@ -58,53 +61,94 @@ inline std::vector<int> genRandVec(const Index size) {
   return randVec;
 }
 
+// --- The following were taken from TBB's parallel sorting algorithm to try to
+// mimic the work it does under the hood
+
 // Compute median of three numbers
-template <typename Iter>
-auto medianThree(Iter i1, Iter i2, Iter i3) {
+template <typename Iter, typename Compare>
+auto medianThree(Iter i1, Iter i2, Iter i3, const Compare& comp) {
   const auto a{*i1};
   const auto b{*i2};
   const auto c{*i3};
-  return (a < b) ? ((b < c) ? b : ((a < c) ? c : a))
-                 : ((c < b) ? b : ((c < a) ? c : a));
+  return comp(a, b) ? (comp(b, c) ? b : (comp(a, c) ? c : a))
+                    : (comp(c, b) ? b : (comp(c, a) ? c : a));
 }
 
 // Pick a pivot based on the median of three of three medians (pseudo median of
 // nine)
-template <typename Iter>
-auto pickPivot(Iter begin, Iter end) {
+template <typename Iter, typename Compare>
+auto pickPivot(Iter begin, Iter end, const Compare& comp) {
   const auto d{std::distance(begin, end) / 8};
-  const auto m1{medianThree(begin, begin + d, begin + 2 * d)};
-  const auto m2{medianThree(begin + 3 * d, begin + 4 * d, begin + 5 * d)};
-  const auto m3{medianThree(begin + 6 * d, begin + 7 * d, std::prev(end))};
-  return medianThree(&m1, &m2, &m3);
+  const auto m1{medianThree(begin, begin + d, begin + 2 * d, comp)};
+  const auto m2{medianThree(begin + 3 * d, begin + 4 * d, begin + 5 * d, comp)};
+  const auto m3{
+      medianThree(begin + 6 * d, begin + 7 * d, std::prev(end), comp)};
+  return medianThree(&m1, &m2, &m3, comp);
 }
 
-template <typename Iter>
-void parallelQuickSort(Iter begin, Iter end, ThreadWeave::ThreadPool& pool) {
+template <typename Iter, typename Compare>
+Iter partition(Iter begin, Iter end, const auto piv, const Compare& comp) {
+  Iter i{begin};
+  Iter j{std::prev(end)};
+
+  while (true) {
+    while (comp(*i, piv)) {
+      ++i;
+    }
+
+    while (comp(piv, *j)) {
+      --j;
+    }
+
+    if (i >= j) {
+      return j;
+    }
+
+    std::iter_swap(i, j);
+    ++i;
+    --j;
+  }
+}
+
+template <typename Iter, typename Compare>
+void parallelQuickSort(Iter begin, Iter end, ThreadWeave::ThreadPool& pool,
+                       const Compare& comp) {
   const auto d{std::distance(begin, end)};
 
   // Base case: fewer than cutoff elements, fallback to std::sort
   constexpr Index kCutoff{500};  // mimic tbb
 
   if (d < kCutoff) {
-    std::sort(begin, end);
+    std::sort(begin, end, comp);
     return;
   }
 
   // Partition around a pivot
-  const auto piv{pickPivot(begin, end)};
-  const Iter mid1{
-      std::partition(begin, end, [piv](const auto& ele) { return ele < piv; })};
-  const Iter mid2{
-      std::partition(mid1, end, [piv](const auto& ele) { return piv >= ele; })};
+  const auto piv{pickPivot(begin, end, comp)};
+  const Iter mid{partition(begin, end, piv, comp)};
+  const Iter right{std::next(mid)};
+  const auto leftSize{std::distance(begin, right)};
 
-  // Recursive task submission for left side
-  auto futL{pool.submit(
-      [begin, mid1, &pool] { parallelQuickSort(begin, mid1, pool); })};
+  if (leftSize < kCutoff) {
+    std::sort(begin, right, comp);
+    parallelQuickSort(right, end, pool, comp);
+  } else {
+    // Recursive task submission only in instances where the task is
+    // sufficiently large
+    auto futL{pool.submit([begin, right, &pool, &comp] {
+      parallelQuickSort(begin, right, pool, comp);
+    })};
+    parallelQuickSort(right, end, pool, comp);
+    futL.wait();
+  }
+}
 
-  // Process right side synchronously on current thread
-  parallelQuickSort(mid2, end, pool);
-  futL.wait();
+// Default comparator overload, mirroring TBB's parallel_sort(begin, end)
+template <typename Iter>
+void parallelQuickSort(Iter begin, Iter end, ThreadWeave::ThreadPool& pool) {
+  parallelQuickSort(
+      begin, end, pool,
+      std::less<typename std::iterator_traits<Iter>::value_type>());
 }
 
 #endif
