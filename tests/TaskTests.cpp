@@ -9,6 +9,7 @@
 #include <new>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 
 using namespace ThreadWeave;
 

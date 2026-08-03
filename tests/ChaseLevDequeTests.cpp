@@ -11,8 +11,6 @@
 #include <thread>
 #include <vector>
 
-#include "PaddedAtomicInt.h"
-
 using namespace ThreadWeave;
 
 // Make sure an empty deque returns std::nullopt on pop and steal
@@ -181,7 +179,7 @@ TEST(ChaseLevDequeTests, RandomizedOperationsTest) {
        const int nTasks : testSet) {
     ChaseLevDeque<int> dq{};
     constexpr int nThieves{10};
-    std::vector<PaddedAtomicInt> actualCounts(nTasks);
+    std::vector<std::atomic<int>> actualCounts(nTasks);
     std::vector<std::jthread> thieves{};
     thieves.reserve(nThieves);
     std::atomic<bool> ownerDone{false};
