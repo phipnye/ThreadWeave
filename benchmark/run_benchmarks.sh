@@ -20,9 +20,9 @@ mkdir -p "${JSON_DIR}" "${PLOT_DIR}"
 
 declare -A BENCHMARKS=(
     ["SortPerformanceBenchmark"]="sort_performance_results.json"
-    # ["LatencyBenchmark"]="latency_results.json"
-    # ["ComparisonsBenchmark"]="comparisons_results.json"
-    # ["SpeedupBenchmark"]="speedup_results.json"
+    ["LatencyBenchmark"]="latency_results.json"
+    ["ComparisonsBenchmark"]="comparisons_results.json"
+    ["SpeedupBenchmark"]="speedup_results.json"
 )
 
 BENCH_FLAGS=(
@@ -33,6 +33,8 @@ BENCH_FLAGS=(
 
 # TODO: Remove this
 CPU_CORES="0,2,4,6"
+
+cmake -B "${BUILD_DIR}" -S "${BENCH_DIR}/.." -DCMAKE_BUILD_TYPE=Release
 
 for binary in "${!BENCHMARKS[@]}"; do
     echo "  Building ${binary}"
