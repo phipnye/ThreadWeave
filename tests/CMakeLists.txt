@@ -4,6 +4,7 @@ include(GoogleTest)
 set(TEST_SUITES
         ChaseLevDeque
         Future
+        Hazard
         MichaelScottQueue
         NodeAllocator
         Task

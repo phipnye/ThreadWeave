@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <memory>
+#include <utility>
 
 namespace ThreadWeave::Internal {
 
@@ -160,7 +161,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
 
   // Chain the remaining nodes together and ensure their flags are false
   for (Index i{1}; i + 1 < NodesPerBlock; ++i) {
-    block[i]._internal.next = &block[i + 1];
+    block[i]._internal.next = std::addressof(block[i + 1]);
   }
 
   // Retrieve the heads and tails of the now chained block (nodes 1-255 will
@@ -169,8 +170,8 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
   static_assert(NodesPerBlock > 1,
                 "Must allocate more than one node at a time for proper "
                 "chaining logic");
-  Node* batchHead{&block[1]};
-  Node* batchTail{&block[NodesPerBlock - 1]};
+  Node* const batchHead{std::addressof(block[1])};
+  Node* const batchTail{std::addressof(block[NodesPerBlock - 1])};
 
   // Push this chain onto the free list
   batchTail->_internal.next = freeHead_.load(MemoryOrder::relaxed);
@@ -179,13 +180,13 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
                                           MemoryOrder::relaxed)) {}
 
   // Hand the stolen first node directly back to the calling thread
-  return &block[0];
+  return std::addressof(block[0]);
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches() {
   // Preallocate a block of the set number of nodes
-  Node* initialNode{allocateBlock()};
+  Node* const initialNode{allocateBlock()};
 
   // Chain the "stolen" first node back onto the front of the free list
   initialNode->_internal.next = freeHead_.load(MemoryOrder::relaxed);
@@ -275,7 +276,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
 
   // Try recycling nodes from the save list
   // clang-format off
-  if (Node* saved{saveHead_.exchange(nullptr, MemoryOrder::acquire)}) {
+  if (Node* const saved{saveHead_.exchange(nullptr, MemoryOrder::acquire)}) {
     // clang-format on
     Node* holdFree{nullptr};  // Nodes that can be moved to free list
     Node* holdSave{nullptr};  // Nodes that remain in 'saved' state
@@ -364,8 +365,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
   // Try recycling local nodes if necessary
   if (!local.freeHead_) {
     // Isolate the current local saved chain
-    Node* saved{local.saveHead_};
-    local.saveHead_ = nullptr;
+    Node* const saved{std::exchange(local.saveHead_, nullptr)};
     tryRecycle(saved, local.freeHead_, local.saveHead_);
   }
 
@@ -387,7 +387,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* node) noexcept {
+void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* const node) noexcept {
   if (!node) {
     return;
   }

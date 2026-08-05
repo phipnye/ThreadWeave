@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <queue>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -48,6 +49,7 @@ static_assert(!std::is_trivially_destructible_v<NonTrivialPayload>);
 // against races in the global free-list CAS loops / block allocation path)
 template <typename Node, Index NodesPerBlock>
 void concurrentAllocateProducesUniquePointers() {
+  using Allocator = NodeAllocator<Node, NodesPerBlock>;
   constexpr int nThreads{8};
   constexpr int nPerThread{200};
   std::vector<std::vector<Node*>> threadPtrs(nThreads);
@@ -60,7 +62,7 @@ void concurrentAllocateProducesUniquePointers() {
       local.reserve(nPerThread);
 
       for (int i{0}; i < nPerThread; ++i) {
-        local.push_back(NodeAllocator<Node, NodesPerBlock>::allocate());
+        local.push_back(Allocator::allocate());
       }
     });
   }
@@ -73,26 +75,98 @@ void concurrentAllocateProducesUniquePointers() {
     allPtrs.insert(allPtrs.end(), v.begin(), v.end());
   }
 
-  const std::size_t sz{allPtrs.size()};
-  EXPECT_EQ(sz, static_cast<std::size_t>(nThreads * nPerThread));
+  const std::size_t nOrig{allPtrs.size()};
+  EXPECT_EQ(nOrig, static_cast<std::size_t>(nThreads * nPerThread));
   std::ranges::sort(allPtrs);
-  allPtrs.erase(std::unique(allPtrs.begin(), allPtrs.end()), allPtrs.end());
-  EXPECT_EQ(allPtrs.size(), sz)
+  allPtrs.erase(std::ranges::unique(allPtrs).begin(), allPtrs.end());
+  EXPECT_EQ(allPtrs.size(), nOrig)
       << "NodeAllocator handed out a duplicate pointer under concurrent load";
+
+  for (auto* const ptr : allPtrs) {
+    Allocator::deallocate(ptr);
+  }
+}
+
+// Producer threads allocate nodes and hand them off through a shared queue,
+// and consumer threads pop and deallocate them
+template <typename Node, Index NodesPerBlock>
+void producerConsumerCrossThreadDeallocation() {
+  using Allocator = NodeAllocator<Node, NodesPerBlock>;
+  constexpr int nProducers{4};
+  constexpr int nConsumers{4};
+  constexpr int nPerProducer{2'000};
+  constexpr int nTotal{nProducers * nPerProducer};
+  std::mutex qMutex{};
+  std::queue<Node*> q{};
+  std::atomic<int> producedCnt{0};
+  std::atomic<int> consumedCnt{0};
+  std::atomic<bool> producersDone{false};
+
+  std::vector<std::jthread> consumers{};
+  consumers.reserve(nConsumers);
+
+  for (int c{0}; c < nConsumers; ++c) {
+    consumers.emplace_back([&] {
+      while (!producersDone.load(MemoryOrder::acquire) ||
+             consumedCnt.load(MemoryOrder::relaxed) <
+                 producedCnt.load(MemoryOrder::acquire)) {
+        Node* node{nullptr};
+
+        {
+          std::lock_guard lock{qMutex};
+          if (!q.empty()) {
+            node = q.front();
+            q.pop();
+          }
+        }
+
+        if (node) {
+          Allocator::deallocate(node);
+          consumedCnt.fetch_add(1, MemoryOrder::relaxed);
+        } else {
+          std::this_thread::yield();
+        }
+      }
+    });
+  }
+
+  std::vector<std::jthread> producers{};
+  producers.reserve(nProducers);
+
+  for (int p{0}; p < nProducers; ++p) {
+    producers.emplace_back([&] {
+      for (int i{0}; i < nPerProducer; ++i) {
+        {
+          std::lock_guard lock{qMutex};
+          q.push(Allocator::allocate());
+        }
+
+        producedCnt.fetch_add(1, MemoryOrder::release);
+      }
+    });
+  }
+
+  producers.clear();
+  producersDone.store(true, MemoryOrder::release);
+  consumers.clear();
+  EXPECT_EQ(producedCnt.load(MemoryOrder::relaxed), nTotal);
+  EXPECT_EQ(consumedCnt.load(MemoryOrder::relaxed), nTotal);
 }
 
 // NOTE: Each allocator has a unique NodesPerBlock since each instantiation gets
 // its own static and thread local data which keeps runs separate across tests
 // if run sequentially
 
-TEST(NodeAllocatorStackNodeTests, AllocateReturnsNonNull) {
+// --- Stack nodes
+
+TEST(NodeAllocatorTests, AllocateStackNodeReturnsNonNull) {
   using Allocator = NodeAllocator<StackNode<int>, 4>;
   auto* const node{Allocator::allocate()};
   EXPECT_NE(node, nullptr);
   Allocator::deallocate(node);
 }
 
-TEST(NodeAllocatorStackNodeTests, AllocateReturnsDistinctPointers) {
+TEST(NodeAllocatorTests, AllocateReturnsDistinctPointers) {
   using Allocator = NodeAllocator<StackNode<int>, 5>;
   auto* const a{Allocator::allocate()};
   auto* const b{Allocator::allocate()};
@@ -101,7 +175,7 @@ TEST(NodeAllocatorStackNodeTests, AllocateReturnsDistinctPointers) {
   Allocator::deallocate(b);
 }
 
-TEST(NodeAllocatorStackNodeTests, AllocatedNodeStartsInResetState) {
+TEST(NodeAllocatorTests, AllocatedStackNodeStartsInResetState) {
   using Allocator = NodeAllocator<StackNode<int>, 6>;
   auto* const node{Allocator::allocate()};
   EXPECT_EQ(node->data, 0);
@@ -109,13 +183,13 @@ TEST(NodeAllocatorStackNodeTests, AllocatedNodeStartsInResetState) {
   Allocator::deallocate(node);
 }
 
-TEST(NodeAllocatorStackNodeTests, DeallocateNullptrIsSafe) {
+TEST(NodeAllocatorTests, DeallocateNullptrIsSafe) {
   using Allocator = NodeAllocator<StackNode<int>, 7>;
   Allocator::deallocate(nullptr);
   SUCCEED();
 }
 
-TEST(NodeAllocatorStackNodeTests, DeallocateResetsNodeImmediately) {
+TEST(NodeAllocatorTests, DeallocateResetsNodeImmediately) {
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, 7>;
   auto* const node{Allocator::allocate()};
@@ -129,7 +203,7 @@ TEST(NodeAllocatorStackNodeTests, DeallocateResetsNodeImmediately) {
   EXPECT_EQ(node->next, nullptr);
 }
 
-TEST(NodeAllocatorStackNodeTests, SameThreadRecyclesSameNode) {
+TEST(NodeAllocatorTests, SameThreadRecyclesSameStackNode) {
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, 8>;
   auto* const a{Allocator::allocate()};
@@ -139,7 +213,7 @@ TEST(NodeAllocatorStackNodeTests, SameThreadRecyclesSameNode) {
   Allocator::deallocate(b);
 }
 
-TEST(NodeAllocatorStackNodeTests, SameThreadRecyclesSameNodeAcrossIters) {
+TEST(NodeAllocatorTests, SameThreadRecyclesSameStackNodeAcrossIters) {
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, 9>;
   constexpr int nIterations{5'000};
@@ -160,7 +234,7 @@ TEST(NodeAllocatorStackNodeTests, SameThreadRecyclesSameNodeAcrossIters) {
   }
 }
 
-TEST(NodeAllocatorStackNodeTests, AllocatingMoreThanOneBlockYieldsUniqueNodes) {
+TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueStackNodes) {
   constexpr Index kSmallBlock{2};
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, kSmallBlock>;
@@ -172,16 +246,18 @@ TEST(NodeAllocatorStackNodeTests, AllocatingMoreThanOneBlockYieldsUniqueNodes) {
     nodes.push_back(Allocator::allocate());
   }
 
+  const auto nOrig{nodes.size()};
   std::ranges::sort(nodes);
-  EXPECT_EQ(std::ranges::adjacent_find(nodes), nodes.end());
+  nodes.erase(std::ranges::unique(nodes).begin(), nodes.end());
+  EXPECT_EQ(nOrig, nodes.size());
 
   for (auto* const node : nodes) {
     Allocator::deallocate(node);
   }
 }
 
-TEST(NodeAllocatorStackNodeTests, NodesFromEveryBlockAreWritableAndReadable) {
-  constexpr Index kSmallBlock{5};
+TEST(NodeAllocatorTests, StackNodesFromEveryBlockAreWritableAndReadable) {
+  constexpr Index kSmallBlock{3};
   constexpr int nNodes{50};
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, kSmallBlock>;
@@ -189,7 +265,7 @@ TEST(NodeAllocatorStackNodeTests, NodesFromEveryBlockAreWritableAndReadable) {
   nodes.reserve(nNodes);
 
   for (int i{0}; i < nNodes; ++i) {
-    auto* node{Allocator::allocate()};
+    auto* const node{Allocator::allocate()};
     node->data = i;
     nodes.push_back(node);
   }
@@ -201,4 +277,219 @@ TEST(NodeAllocatorStackNodeTests, NodesFromEveryBlockAreWritableAndReadable) {
   for (auto* const node : nodes) {
     Allocator::deallocate(node);
   }
+}
+
+// --- Queue Nodes
+
+TEST(NodeAllocatorTests, AllocateQueueNodeReturnsNonNull) {
+  using Allocator = NodeAllocator<QueueNode<int>, 10>;
+  auto* const node{Allocator::allocate()};
+  EXPECT_NE(node, nullptr);
+  Allocator::deallocate(node);
+}
+
+TEST(NodeAllocatorTests, AllocatedQueueNodeStartsInResetState) {
+  using Allocator = NodeAllocator<QueueNode<int>, 11>;
+  auto* const node{Allocator::allocate()};
+  EXPECT_EQ(node->data, 0);
+  EXPECT_EQ(node->next.load(MemoryOrder::relaxed), nullptr);
+  Allocator::deallocate(node);
+}
+
+TEST(NodeAllocatorTests, DeallocateResetsAtomicNextImmediately) {
+  using Node = QueueNode<int>;
+  using Allocator = NodeAllocator<Node, 12>;
+  auto* const node{Allocator::allocate()};
+  node->data = 7;
+  node->next.store(reinterpret_cast<Node*>(0x1), MemoryOrder::relaxed);
+  Allocator::deallocate(node);
+
+  // Checking this is safe here because it's run in isolation (no other threads
+  // to worry about) and the data is not actually freed until the end of the
+  // program
+  EXPECT_EQ(node->data, 0);
+  EXPECT_EQ(node->next.load(MemoryOrder::relaxed), nullptr);
+}
+
+TEST(NodeAllocatorTests, SameThreadRecyclesSameQueueNode) {
+  using Node = QueueNode<int>;
+  using Allocator = NodeAllocator<Node, 13>;
+  auto* const a{Allocator::allocate()};
+  Allocator::deallocate(a);
+  auto* const b{Allocator::allocate()};
+  EXPECT_EQ(a, b);
+  Allocator::deallocate(b);
+}
+
+TEST(NodeAllocatorTests, SameThreadRecyclesSameQueueNodeAcrossIters) {
+  using Node = QueueNode<int>;
+  using Allocator = NodeAllocator<Node, 14>;
+  constexpr int nIterations{5'000};
+  Node* prev{nullptr};
+
+  for (int i{0}; i < nIterations; ++i) {
+    auto* const curr{Allocator::allocate()};
+    EXPECT_NE(curr, nullptr);
+    curr->data = i;
+    Allocator::deallocate(curr);
+
+    if (prev) {
+      EXPECT_EQ(curr, prev);
+    }
+
+    prev = curr;
+  }
+}
+
+TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueQueueNodes) {
+  constexpr Index kSmallBlock{2};
+  using Node = QueueNode<int>;
+  using Allocator = NodeAllocator<Node, kSmallBlock>;
+  constexpr int nNodes{25};
+  std::vector<Node*> nodes{};
+  nodes.reserve(nNodes);
+
+  for (int i{0}; i < nNodes; ++i) {
+    nodes.push_back(Allocator::allocate());
+  }
+
+  const auto nOrig{nodes.size()};
+  std::ranges::sort(nodes);
+  nodes.erase(std::ranges::unique(nodes).begin(), nodes.end());
+  EXPECT_EQ(nOrig, nodes.size());
+
+  for (auto* const node : nodes) {
+    Allocator::deallocate(node);
+  }
+}
+
+TEST(NodeAllocatorTests, QueueNodesFromEveryBlockAreWritableAndReadable) {
+  constexpr Index kSmallBlock{3};
+  constexpr int nNodes{50};
+  using Node = QueueNode<int>;
+  using Allocator = NodeAllocator<Node, kSmallBlock>;
+  std::vector<Node*> nodes{};
+  nodes.reserve(nNodes);
+
+  for (int i{0}; i < nNodes; ++i) {
+    auto* const node{Allocator::allocate()};
+    node->data = i;
+    nodes.push_back(node);
+  }
+
+  for (int i{0}; i < nNodes; ++i) {
+    EXPECT_EQ(nodes[i]->data, i);
+  }
+
+  for (auto* const node : nodes) {
+    Allocator::deallocate(node);
+  }
+}
+
+// --- Task nodes
+
+TEST(NodeAllocatorTests, AllocateTaskNodeReturnsNonNullAndReset) {
+  using Allocator = NodeAllocator<Task<int>, 15>;
+  auto* const task{Allocator::allocate()};
+  EXPECT_NE(task, nullptr);
+  EXPECT_FALSE(task->isReady());
+  EXPECT_FALSE(task->hasResult_);
+  EXPECT_EQ(task->refCount_.load(MemoryOrder::relaxed), 2);
+  Allocator::deallocate(task);
+}
+
+TEST(NodeAllocatorTests, SameThreadRecyclesSameTaskNode) {
+  using Node = Task<int>;
+  using Allocator = NodeAllocator<Node, 16>;
+  auto* const a{Allocator::allocate()};
+  Allocator::deallocate(a);
+  auto* const b{Allocator::allocate()};
+  EXPECT_EQ(a, b);
+  Allocator::deallocate(b);
+}
+
+TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueTaskNodes) {
+  constexpr Index kSmallBlock{2};
+  using Node = Task<int>;
+  using Allocator = NodeAllocator<Node, kSmallBlock>;
+  constexpr int nNodes{25};
+  std::vector<Node*> nodes{};
+  nodes.reserve(nNodes);
+
+  for (int i{0}; i < nNodes; ++i) {
+    nodes.push_back(Allocator::allocate());
+  }
+
+  const auto nOrig{nodes.size()};
+  std::ranges::sort(nodes);
+  nodes.erase(std::ranges::unique(nodes).begin(), nodes.end());
+  EXPECT_EQ(nOrig, nodes.size());
+
+  for (auto* const node : nodes) {
+    Allocator::deallocate(node);
+  }
+}
+
+// --- Non-trivial payload
+
+TEST(NodeAllocatorTests, DeallocateDestroysAndReconstructsNonTrivialPayload) {
+  using Node = StackNode<NonTrivialPayload>;
+  using Allocator = NodeAllocator<Node, 17>;
+  NonTrivialPayload::resetCounters();
+  auto* const node{Allocator::allocate()};
+  node->data.values = {1, 2, 3};
+  const int constructedBefore{
+      NonTrivialPayload::constructCount.load(MemoryOrder::relaxed)};
+  Allocator::deallocate(node);
+
+  // resetValue() should have destroyed the populated payload and performed a
+  // placement new, fresh default-constructed one in its place
+  EXPECT_TRUE(node->data.values.empty());
+  EXPECT_GE(NonTrivialPayload::destructCount.load(MemoryOrder::relaxed), 1);
+  EXPECT_GT(NonTrivialPayload::constructCount.load(MemoryOrder::relaxed),
+            constructedBefore);
+}
+
+// --- Concurrency
+
+TEST(NodeAllocatorTests, ConcurrentAllocateProducesUniquePointersStackNode) {
+  concurrentAllocateProducesUniquePointers<StackNode<int>, 18>();
+}
+
+TEST(NodeAllocatorTests, ConcurrentAllocateProducesUniquePointersQueueNode) {
+  concurrentAllocateProducesUniquePointers<QueueNode<int>, 19>();
+}
+
+TEST(NodeAllocatorTests, ConcurrentAllocateProducesUniquePointersTaskNode) {
+  concurrentAllocateProducesUniquePointers<Task<int>, 20>();
+}
+
+TEST(NodeAllocatorTests, CrossThreadProducerConsumerStackNode) {
+  producerConsumerCrossThreadDeallocation<StackNode<int>, 21>();
+}
+
+TEST(NodeAllocatorTests, CrossThreadProducerConsumerQueueNode) {
+  producerConsumerCrossThreadDeallocation<QueueNode<int>, 22>();
+}
+
+TEST(NodeAllocatorTests, CrossThreadProducerConsumerTaskNode) {
+  producerConsumerCrossThreadDeallocation<Task<int>, 23>();
+}
+
+TEST(NodeAllocatorTests, SingleNodeCrossThreadDeallocationIsSafe) {
+  using Node = StackNode<int>;
+  using Allocator = NodeAllocator<Node, 24>;
+  constexpr int nIterations{2'000};
+
+  for (int i{0}; i < nIterations; ++i) {
+    auto* const node{Allocator::allocate()};
+    node->data = i;
+
+    std::jthread deallocator([&] {
+      EXPECT_EQ(node->data, i);
+      Allocator::deallocate(node);
+    });
+  }
+
+  SUCCEED();
 }
