@@ -1,5 +1,0 @@
-if(EXISTS "/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/VyukovQueueTests[1]_tests.cmake")
-  include("/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/VyukovQueueTests[1]_tests.cmake")
-else()
-  add_test(VyukovQueueTests_NOT_BUILT VyukovQueueTests_NOT_BUILT)
-endif()

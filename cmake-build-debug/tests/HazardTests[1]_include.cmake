@@ -1,5 +1,0 @@
-if(EXISTS "/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/HazardTests[1]_tests.cmake")
-  include("/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/HazardTests[1]_tests.cmake")
-else()
-  add_test(HazardTests_NOT_BUILT HazardTests_NOT_BUILT)
-endif()
