@@ -26,3 +26,4 @@ library(scales)
 
 JSONS <- function(file) ANALYSIS("jsons", file)
 PLOTS <- function(file) ANALYSIS("plots", file)
+options(device = function() pdf(NULL))
