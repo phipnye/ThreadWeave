@@ -26,10 +26,10 @@ PLOT_DIR="${ANALYSIS_DIR}/plots"
 mkdir -p "${JSON_DIR}" "${PLOT_DIR}"
 
 declare -A BENCHMARKS=(
-    ["SortPerformanceBenchmark"]="sort_performance_results.json"
-    ["LatencyBenchmark"]="latency_results.json"
-    ["ComparisonsBenchmark"]="comparisons_results.json"
-    ["SpeedupBenchmark"]="speedup_results.json"
+    # ["SortPerformanceBenchmark"]="sort_performance_results.json"
+    # ["LatencyBenchmark"]="latency_results.json"
+    # ["ComparisonsBenchmark"]="comparisons_results.json"
+    # ["SpeedupBenchmark"]="speedup_results.json"
 )
 
 BENCH_FLAGS=(

@@ -12,7 +12,9 @@ if (!requireNamespace("renv", quietly = TRUE)) {
   install.packages("renv", repos = "https://cloud.r-project.org/")
 }
 
+options(renv.verbose = FALSE)
 renv::restore(lockfile = ANALYSIS("renv.lock"), prompt = FALSE)
+options(renv.verbose = TRUE)
 
 suppressPackageStartupMessages({
 library(jsonlite)
