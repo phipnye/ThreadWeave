@@ -3,6 +3,7 @@
 
 #include <threadweave/internal/utils.h>
 
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <limits>
@@ -151,9 +152,15 @@ class alignas(Internal::kCacheLineSize) ChaseLevDeque {
   std::optional<T> steal() noexcept;
 
   /**
-   * Determine if the deque is empty. This function is intended to be invoked by
-   * the consumer. Note that this function uses relaxed semantics and should not
-   * be used reliably.
+   * Determine the approximate number of elements in the deque. Note that this
+   * function uses relaxed semantics and should not be used reliably.
+   * @return the approximate number of elements in the deque.
+   */
+  Index approxSize() const noexcept;
+
+  /**
+   * Determine if the deque is empty. Equivalent to approxSize() == 0. Note that
+   * this function uses relaxed semantics and should not be used reliably.
    * @return true if the deque is empty and false otherwise.
    */
   bool empty() const noexcept;
@@ -326,10 +333,17 @@ std::optional<T> ChaseLevDeque<T>::steal() noexcept {
 template <typename T>
   requires(std::is_default_constructible_v<T> &&
            std::is_trivially_copyable_v<T>)
-bool ChaseLevDeque<T>::empty() const noexcept {
-  const Index front{front_.load(MemoryOrder::relaxed)};
+Index ChaseLevDeque<T>::approxSize() const noexcept {
   const Index back{back_.load(MemoryOrder::relaxed)};
-  return back <= front;
+  const Index front{front_.load(MemoryOrder::relaxed)};
+  return std::max(back - front, Index{0});
+}
+
+template <typename T>
+  requires(std::is_default_constructible_v<T> &&
+           std::is_trivially_copyable_v<T>)
+bool ChaseLevDeque<T>::empty() const noexcept {
+  return approxSize() == 0;
 }
 
 template <typename T>

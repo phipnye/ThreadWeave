@@ -12,6 +12,8 @@
 
 namespace ThreadWeave {
 
+// TODO: Resolve that ThreadPool must be defined (potentially make internal)
+
 // Forward declare ThreadPool so we can use it as a default policy type
 class ThreadPool;
 

@@ -85,7 +85,7 @@ void VyukovQueue<T>::push(T data) {
   pushNode->data = std::move(data);
 
   // Append the new node to the prior tail
-  Node* oldTail{tail_.exchange(pushNode, MemoryOrder::acq_rel)};
+  Node* const oldTail{tail_.exchange(pushNode, MemoryOrder::acq_rel)};
   oldTail->next.store(pushNode, MemoryOrder::release);
 }
 

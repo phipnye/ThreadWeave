@@ -116,7 +116,8 @@ void MichaelScottQueue<T>::push(T data) {
     // no longer in use
     const Internal::HazardGuard<Internal::HazardSlot::Queue0> tailGuard{};
 
-    // TODO: Can throw here which would leak pushNode
+    // TODO: Can technically throw here with insufficient max threads size which
+    // would leak pushNode
     Node* tailPtr{tailGuard.acquirePointerWithHazard(tail_)};
     TW_ASSERT(tailPtr != nullptr,
               "Tail pointer in MichaelScottQueue cannot be null");

@@ -105,7 +105,7 @@ class ThreadPool {
    */
   template <class F, class... Args>
   auto submit(F&& f, Args&&... args)
-      -> Future<std::invoke_result_t<F, Args...>, ThreadPool>;
+      -> Future<std::invoke_result_t<F, Args...>>;
 
  private:
   /**
@@ -128,7 +128,14 @@ class ThreadPool {
    * proper ordering
    * @param task a pointer to a task to execute
    */
-  void executeTask(Internal::TaskBase* const task);
+  void executeTask(Internal::TaskBase* task);
+
+  /**
+   * Sample two worker deques to try to steal from and return the index of the
+   * victim with seemingly more work
+   * @return the index of a deque to try to steal from
+   */
+  Index getVictim(Index threadId) const noexcept;
 
   /**
    * Helper to retrieve the current state values
@@ -257,7 +264,7 @@ inline ThreadPool::~ThreadPool() {
 
 template <typename F, typename... Args>
 auto ThreadPool::submit(F&& f, Args&&... args)
-    -> Future<std::invoke_result_t<F, Args...>, ThreadPool> {
+    -> Future<std::invoke_result_t<F, Args...>> {
   using ReturnType = std::invoke_result_t<F, Args...>;
   using TaskType = Internal::Task<ReturnType>;
   using Allocator = Internal::NodeAllocator<TaskType>;
@@ -326,7 +333,7 @@ auto ThreadPool::submit(F&& f, Args&&... args)
     injectionQueue_.push(task);
   }
 
-  return Future<ReturnType, ThreadPool>{task};
+  return Future<ReturnType>{task};
 }
 
 inline void ThreadPool::workerLoop(const Index threadId) {
@@ -430,10 +437,8 @@ inline bool ThreadPool::tryExecuteTask(const Index threadId) {
 
   // Try stealing a task from the other threads (random start index alleviates
   // contention)
-  thread_local std::mt19937 rng{static_cast<std::size_t>(threadId)};
-  std::uniform_int_distribution<Index> idxDist{0, nThreads_ - 1};
+  const Index victimIdx{getVictim(threadId)};
   bool stoleTask{false};
-  const Index victimIdx{idxDist(rng)};
 
   for (Index i{0}; i < nThreads_; ++i) {
     // Index of thread to try to steal from
@@ -482,6 +487,27 @@ inline void ThreadPool::executeTask(Internal::TaskBase* const task) {
       nPendingTasks_.notify_all();
     }
   }
+}
+
+inline Index ThreadPool::getVictim(const Index threadId) const noexcept {
+  thread_local std::mt19937 rng{static_cast<std::size_t>(threadId)};
+  std::uniform_int_distribution<Index> idxDist{0, nThreads_ - 1};
+  const Index idx1{idxDist(rng)};
+  const Index idx2{idxDist(rng)};
+
+  // Try preventing the calling worker from stealing from itself first
+  if (idx1 == threadId) {
+    return idx2;
+  }
+
+  if (idx2 == threadId) {
+    return idx1;
+  }
+
+  // Otherwise, return the index of the worker with seemingly more work
+  return workerDeques_[idx1].approxSize() > workerDeques_[idx2].approxSize()
+             ? idx1
+             : idx2;
 }
 
 inline std::tuple<std::uint64_t, std::uint64_t, bool> ThreadPool::getState(
