@@ -62,6 +62,9 @@ target_compile_definitions(ThreadWeave INTERFACE TW_CACHE_LINE_SIZE=64)
 
 # --- Third-party dependencies
 
+find_package(Threads REQUIRED)
+target_link_libraries(ThreadWeave INTERFACE Threads::Threads)
+
 include(FetchContent)
 set(BENCHMARK_ENABLE_TESTING OFF)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
