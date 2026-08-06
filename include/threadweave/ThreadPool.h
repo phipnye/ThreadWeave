@@ -2,8 +2,8 @@
 #define TW_THREAD_POOL_H
 
 #include <threadweave/ChaseLevDeque.h>
-#include <threadweave/Future.h>
 #include <threadweave/VyukovQueue.h>
+#include <threadweave/internal/Future.h>
 #include <threadweave/internal/NodeAllocator.h>
 #include <threadweave/internal/Task.h>
 #include <threadweave/internal/utils.h>

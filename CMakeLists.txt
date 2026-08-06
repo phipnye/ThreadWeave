@@ -29,12 +29,13 @@ target_sources(ThreadWeave
         BASE_DIRS include
         FILES
         include/threadweave/ChaseLevDeque.h
-        include/threadweave/internal/Hazard.h
         include/threadweave/MichaelScottQueue.h
-        include/threadweave/internal/NodeAllocator.h
         include/threadweave/ThreadPool.h
         include/threadweave/TreiberStack.h
         include/threadweave/VyukovQueue.h
+        include/threadweave/internal/Future.h
+        include/threadweave/internal/Hazard.h
+        include/threadweave/internal/NodeAllocator.h
         include/threadweave/internal/Node.h
         include/threadweave/internal/Task.h
         include/threadweave/internal/utils.h

@@ -22,8 +22,6 @@ class TaskBase {
  public:
   // --- Data members
 
-  // TODO: Review for false sharing
-
   // Pointer to function to execute
   void (*execute_)(TaskBase*){nullptr};
 

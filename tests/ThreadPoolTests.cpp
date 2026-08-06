@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <threadweave/Future.h>
 #include <threadweave/ThreadPool.h>
+#include <threadweave/internal/Future.h>
 #include <threadweave/internal/utils.h>
 
 #include <bitset>
