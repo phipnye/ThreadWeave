@@ -1,7 +1,8 @@
 #include <threadweave/ThreadPool.h>
 
 #include <cstddef>
-#include <print>
+#include <iomanip>
+#include <iostream>
 #include <random>
 #include <vector>
 
@@ -45,12 +46,13 @@ int main() {
   }
 
   // Capture and demonstrate results
-  std::println("--- Thread Pool Execution Results ---");
+  std::cout << "--- Thread Pool Execution Results ---\n";
 
   for (std::size_t i{0}; i < nTasks; ++i) {
     // f.get() blocks until the specific task finishes
-    int result = futures[i].get();
-    std::println("Task {:03d}: Fibonacci({:03d}) = {}", i + 1, randSample[i],
-                 result);
+    const int res{futures[i].get()};
+    std::cout << "Task " << std::setw(3) << std::setfill('0') << (i + 1)
+              << ": Fibonacci(" << std::setw(3) << std::setfill('0')
+              << randSample[i] << ") = " << res << '\n';
   }
 }

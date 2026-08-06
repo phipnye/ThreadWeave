@@ -1,0 +1,5 @@
+if(EXISTS "/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/MichaelScottQueueTests[1]_tests.cmake")
+  include("/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/MichaelScottQueueTests[1]_tests.cmake")
+else()
+  add_test(MichaelScottQueueTests_NOT_BUILT MichaelScottQueueTests_NOT_BUILT)
+endif()

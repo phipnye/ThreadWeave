@@ -1,0 +1,5 @@
+if(EXISTS "/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-release/tests/FutureTests[1]_tests.cmake")
+  include("/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-release/tests/FutureTests[1]_tests.cmake")
+else()
+  add_test(FutureTests_NOT_BUILT FutureTests_NOT_BUILT)
+endif()

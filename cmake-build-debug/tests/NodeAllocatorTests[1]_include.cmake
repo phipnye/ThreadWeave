@@ -1,0 +1,5 @@
+if(EXISTS "/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/NodeAllocatorTests[1]_tests.cmake")
+  include("/home/philip/Documents/Cpp_projects/ThreadWeave/cmake-build-debug/tests/NodeAllocatorTests[1]_tests.cmake")
+else()
+  add_test(NodeAllocatorTests_NOT_BUILT NodeAllocatorTests_NOT_BUILT)
+endif()

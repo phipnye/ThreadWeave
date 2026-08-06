@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <iostream>
 #include <optional>
-#include <print>
 #include <random>
 #include <thread>
 #include <vector>
@@ -126,7 +126,7 @@ TEST(ChaseLevDequeTests, StealDuringExpandStress) {
 
 #ifndef TW_NDEBUG
   const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
-  std::println("# of expansions = {}", nExpands);
+  std::cout << "# of expansions = " << nExpands << '\n';
   ASSERT_GT(nExpands, 0) << "No expansion occurred — thieves may be outpacing "
                             "push; reduce nThieves";
 #else
@@ -163,7 +163,7 @@ TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
   const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
 
   if (nExpands != 0) {
-    std::println("# of expansions = {}", nExpands);
+    std::cout << "# of expansions = " << nExpands << '\n';
   }
 
   EXPECT_EQ(nExpands, 0)
