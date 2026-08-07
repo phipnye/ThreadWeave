@@ -3,7 +3,7 @@
 // try/catch works across the async boundary.
 //
 // Build:
-//   g++ -std=c++23 -Iinclude -pthread 03_exception_handling.cpp -o
+//   g++ -std=c++23 -I../include -pthread 03_exception_handling.cpp -o
 //   exception_handling
 // Run:
 //   ./exception_handling
@@ -17,7 +17,7 @@ namespace {
 
 int divide(const int num, const int den) {
   if (den == 0) {
-    throw std::invalid_argument{"division by zero"};
+    throw std::invalid_argument{"Division by zero"};
   }
 
   return num / den;
@@ -26,7 +26,7 @@ int divide(const int num, const int den) {
 }  // namespace
 
 int main() {
-  ThreadWeave::ThreadPool pool{};
+  ThreadWeave::ThreadPool pool{2};
   auto goodFuture{pool.submit(divide, 10, 2)};
   auto badFuture{pool.submit(divide, 10, 0)};
   std::cout << "10 / 2 = " << goodFuture.get() << '\n';

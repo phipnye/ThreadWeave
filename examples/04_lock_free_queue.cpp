@@ -2,7 +2,8 @@
 // of the thread pool. This shows MichaelScottQueue use under MPMC semantics.
 //
 // Build:
-//   g++ -std=c++23 -Iinclude -pthread 04_lock_free_queue.cpp -o lock_free_queue
+//   g++ -std=c++23 -I../include -pthread 04_lock_free_queue.cpp -o
+//   lock_free_queue
 // Run:
 //   ./lock_free_queue
 
@@ -50,11 +51,16 @@ int main() {
           itemsConsumed.fetch_add(1, std::memory_order::relaxed);
         }
       }
+
+      // Once all producers are done, pop until empty
+      while (queue.pop()) {
+        itemsConsumed.fetch_add(1, std::memory_order::relaxed);
+      }
     });
   }
 
   producers.clear();
   consumers.clear();
-  std::cout << "Consumed " << itemsConsumed.load() << " of "
-            << kNumProducers * kItemsPerProducer << " items\n";
+  std::cout << "Consumed " << itemsConsumed.load(std::memory_order::relaxed)
+            << " of " << kNumProducers * kItemsPerProducer << " items\n";
 }

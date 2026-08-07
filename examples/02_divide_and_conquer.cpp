@@ -4,7 +4,7 @@
 // won't deadlock or starve the pool, even with a small number of threads.
 //
 // Build:
-//   g++ -std=c++23 -Iinclude -pthread 02_divide_and_conquer.cpp -o
+//   g++ -std=c++23 -I../include -pthread 02_divide_and_conquer.cpp -o
 //   divide_and_conquer
 // Run:
 //   ./divide_and_conquer
@@ -47,7 +47,7 @@ Index parallelSum(ThreadWeave::ThreadPool& pool, const std::vector<Index>& data,
 }  // namespace
 
 int main() {
-  ThreadWeave::ThreadPool pool{};
+  ThreadWeave::ThreadPool pool{4};  // using 4 threads
   constexpr Index sz{1'000'000};
   const std::vector<Index> data(sz, 1);
   auto total{pool.submit(parallelSum, std::ref(pool), std::cref(data), 0, sz)};
