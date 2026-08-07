@@ -22,11 +22,11 @@ cmake --build cmake-build-release
 ## Run
 
 ```bash
-./build/examples/01_basic_tasks
-./build/examples/02_divide_and_conquer
-./build/examples/03_exception_handling
-./build/examples/04_lock_free_queue
-./build/examples/05_lock_free_stack
+./cmake-build-release/examples/01_basic_tasks
+./cmake-build-release/examples/02_divide_and_conquer
+./cmake-build-release/examples/03_exception_handling
+./cmake-build-release/examples/04_lock_free_queue
+./cmake-build-release/examples/05_lock_free_stack
 ```
 
 ## Compiling a single file directly
