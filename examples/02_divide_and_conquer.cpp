@@ -1,5 +1,3 @@
-// 02_divide_and_conquer.cpp
-//
 // Demonstrates recursive, divide-and-conquer parallelism. A task submitted to
 // the pool submits more tasks to the pool and waits on their results. Workers
 // calling .get() help execute other queued work instead of blocking, and thus
@@ -34,10 +32,9 @@ Index parallelSum(ThreadWeave::ThreadPool& pool, const std::vector<Index>& data,
     return std::accumulate(iter + begin, iter + end, Index{0});
   }
 
-  const Index mid{std::midpoint(begin, end)};
-
-  // Fork the right half off to the pool while this thread recurses on the left
+  // Submit the right half to the pool while this thread recurses on the left
   // half
+  const Index mid{std::midpoint(begin, end)};
   auto futR{
       pool.submit(parallelSum, std::ref(pool), std::cref(data), mid, end)};
   const Index sumL{parallelSum(pool, data, begin, mid)};

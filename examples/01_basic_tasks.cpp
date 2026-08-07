@@ -11,9 +11,13 @@
 #include <iostream>
 #include <vector>
 
+namespace {
+
 int square(const int n) {
   return n * n;
 }
+
+}  // namespace
 
 int main() {
   if (std::thread::hardware_concurrency() == 0) {
