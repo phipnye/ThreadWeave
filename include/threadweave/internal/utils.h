@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <new>
+#include <thread>
 
 namespace ThreadWeave {
 
@@ -50,6 +51,17 @@ inline void assertionFailure(const char* expr, const char* file, const int line,
   }
 
   std::abort();
+}
+
+// Attempt to pause (pauses on GCC and clang for x86 architectures and
+// std::this_thread::yield otherwise
+inline void tryPause() noexcept {
+#if (defined(__GNUC__) || defined(__clang__)) && \
+    (defined(__i386__) || defined(__x86_64__))
+  __builtin_ia32_pause();
+#else
+  std::this_thread::yield();
+#endif
 }
 
 }  // namespace Internal

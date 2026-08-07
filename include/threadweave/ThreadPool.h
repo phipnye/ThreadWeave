@@ -8,6 +8,7 @@
 #include <threadweave/internal/Task.h>
 #include <threadweave/internal/utils.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -555,13 +556,21 @@ inline void ThreadPool::awaitTask(Internal::TaskBase* const task) {
 
   TW_ASSERT(workerId >= 0 && workerId < currentPool->nThreads_,
             "Invalid workerId for current pool");
+  int pauseCnt{1};
+  constexpr int kMaxPauseCnt{64};
 
   // Worker continues executing tasks until the target task completes
   while (!task->isReady()) {
-    // Yield if failed to find a task to execute
-    if (!currentPool->tryExecuteTask(workerId)) {
-      // TODO: Consider re-working this yield
-      std::this_thread::yield();
+    if (currentPool->tryExecuteTask(workerId)) {
+      pauseCnt = 1;
+    } else {
+      // If the current thread failed to find a task to execute, exponentially
+      // backoff
+      for (int _{0}; _ < pauseCnt; ++_) {
+        Internal::tryPause();
+      }
+
+      pauseCnt = std::min(pauseCnt << 1, kMaxPauseCnt);
     }
   }
 }

@@ -14,7 +14,7 @@
 
 constexpr Index kBaseIter{20'000'000};
 constexpr Index kNumThreadArgs[]{1, 2, 3, 4};
-constexpr Index kNumTaskArgs[]{100, 1'000, 10'000};
+constexpr Index kNumTaskArgs[]{10, 100, 1'000};
 
 static void latencyArgs(benchmark::Benchmark* b) {
   for (const Index nTasks : kNumTaskArgs) {
