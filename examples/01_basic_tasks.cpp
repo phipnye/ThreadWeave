@@ -2,7 +2,7 @@
 // independent tasks, and collect their results.
 //
 // Build:
-//   g++ -std=c++23 -Iinclude -pthread 01_basic_tasks.cpp -o basic_tasks
+//   g++ -std=c++23 -I../include -pthread 01_basic_tasks.cpp -o basic_tasks
 // Run:
 //   ./basic_tasks
 
