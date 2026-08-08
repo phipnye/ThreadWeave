@@ -7,6 +7,7 @@
 #include <threadweave/internal/utils.h>
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -73,7 +74,7 @@ template <typename T>
            std::is_nothrow_move_constructible_v<T>)
 MichaelScottQueue<T>::MichaelScottQueue() {
   // Acquire a raw node block for the initial dummy node
-  Node* dummy{Allocator::allocate()};
+  Node* const dummy{Allocator::allocate()};
   TW_ASSERT(dummy != nullptr,
             "Failed to allocate initial dummy node for MichaelScottQueue");
 
@@ -106,8 +107,13 @@ template <typename T>
   requires(std::is_nothrow_default_constructible_v<T> &&
            std::is_nothrow_move_constructible_v<T>)
 void MichaelScottQueue<T>::push(T data) {
-  // Construct new node to store data
-  Node* const pushNode{Allocator::allocate()};
+  // Construct new node to store data (use of smart pointer prevents allocated
+  // node from being leaked (acquiring pointer with hazard could throw if
+  // insufficient max threads set)
+  auto deleter{[](Node* const node) { Allocator::deallocate(node); }};
+  std::unique_ptr<Node, decltype(deleter)> pushNodeGuard{Allocator::allocate(),
+                                                         deleter};
+  Node* const pushNode{pushNodeGuard.get()};
   TW_ASSERT(pushNode != nullptr, "Allocator returned null node in push()");
   pushNode->data = std::move(data);
 
@@ -115,9 +121,6 @@ void MichaelScottQueue<T>::push(T data) {
     // Use an RAII guard for clearing hazard pointer when held tail pointer is
     // no longer in use
     const Internal::HazardGuard<Internal::HazardSlot::Queue0> tailGuard{};
-
-    // TODO: Can technically throw here with insufficient max threads size which
-    // would leak pushNode
     Node* tailPtr{tailGuard.acquirePointerWithHazard(tail_)};
     TW_ASSERT(tailPtr != nullptr,
               "Tail pointer in MichaelScottQueue cannot be null");
@@ -136,6 +139,10 @@ void MichaelScottQueue<T>::push(T data) {
     // attaching it to the end of our list and then try moving the chain along
     if (nextAtomic.compare_exchange_strong(
             nextPtr, pushNode, MemoryOrder::release, MemoryOrder::relaxed)) {
+      // Release reference so node does not get deallocated now that it's in the
+      // queue
+      pushNodeGuard.release();
+
       // Try updating tail to move further down the chain (failures will get
       // resolved by later operations that push further down the chain)
       tail_.compare_exchange_strong(tailPtr, pushNode, MemoryOrder::release,

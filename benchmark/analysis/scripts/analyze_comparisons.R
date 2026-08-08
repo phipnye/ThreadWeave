@@ -50,9 +50,10 @@ ggplot(DT[package_name == "TW"], aes(x = factor(n_tasks), y = speedup, fill = fa
   geom_hline(yintercept = 1, linetype = "dashed", color = "red", linewidth = 0.8) +
   facet_wrap(~balanced, labeller = label_value) +
   labs(
-    title = "Performance Comparison Ratio (TW Time / BS Time)",
+    title = "Performance Speedup",
+    subtitle = "Instances Above 1.0 Line Indicate TW Faster",
     x = "Number of Tasks",
-    y = "Comparison Factor (Multiplier)",
+    y = "Speedup Ratio",
     fill = "Threads"
   ) +
   theme_bw()
