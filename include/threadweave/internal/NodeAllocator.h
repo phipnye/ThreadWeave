@@ -5,6 +5,7 @@
 #include <threadweave/internal/Node.h>
 #include <threadweave/internal/utils.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <utility>
@@ -19,10 +20,13 @@ namespace ThreadWeave::Internal {
  */
 template <AllocatorEligibleNode Node, Index NodesPerBlock = 64>
 class NodeAllocator {
-  // Take head and see which nodes we can steal from the saved list and move to
-  // the free list
-  static void tryRecycle(Node* saved, Node*& holdFree,
-                         Node*& holdSave) noexcept;
+  /**
+   *Take head and see which nodes we can steal from the saved list and move to
+   * the free list
+   * @return the number of nodes that were preserved in the save list
+   */
+  static Index tryRecycle(Node* saved, Node*& holdFree, Node*& holdSave,
+                          std::vector<const void*>& snapshot) noexcept;
 
   // --- Global cache of nodes to share across threads
   class GlobalNodeCaches {
@@ -32,7 +36,7 @@ class NodeAllocator {
 
    public:
     // Free nodes
-    alignas(kCacheLineSize) std::atomic<Node*> freeHead_{nullptr};
+    alignas(kCacheLineSize) std::atomic<Node*> freeHead_;
 
     // Nodes that can't be reused yet
     alignas(kCacheLineSize) std::atomic<Node*> saveHead_{nullptr};
@@ -79,7 +83,13 @@ class NodeAllocator {
     Node* freeHead_{nullptr};  // free nodes
     Node* saveHead_{nullptr};  // nodes that can't be reused yet
 
-    ThreadNodeCache() = default;
+    // Store info related to deallocation to delay when they're necessary and
+    // amortize the cost
+    std::vector<const void*> hazardSnapshot_{};
+    Index saveCnt_{0};
+
+    // Reserve space for hazard snapshots
+    ThreadNodeCache();
 
     // Push everything to one of the global pools of nodes
     ~ThreadNodeCache();
@@ -91,9 +101,7 @@ class NodeAllocator {
     ThreadNodeCache& operator=(ThreadNodeCache&&) = delete;
 
     // Ask global cache for a free node
-    Node* askGlobalForNode() {
-      return globalCache_->askForNode();
-    }
+    Node* askGlobalForNode();
   };
 
   static ThreadNodeCache& getThreadCaches();
@@ -125,22 +133,39 @@ class NodeAllocator {
 };
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-void NodeAllocator<Node, NodesPerBlock>::tryRecycle(Node* saved,
-                                                    Node*& holdFree,
-                                                    Node*& holdSave) noexcept {
+Index NodeAllocator<Node, NodesPerBlock>::tryRecycle(
+    Node* saved, Node*& holdFree, Node*& holdSave,
+    std::vector<const void*>& snapshot) noexcept {
+  // Ask hazard manager for an updated look at all of the pointers currently in
+  // use
+  snapshot.clear();
+  ThreadHazardManager::getActivePointers(snapshot);
+
+  // Sort and deduplicate
+  std::ranges::sort(snapshot);
+  snapshot.erase(std::ranges::unique(snapshot).begin(), snapshot.end());
+
+  // Number of nodes that could not be put on the free list still
+  Index saveCnt{0};
+
   while (saved) {
-    Node* curr{saved};
+    Node* const curr{saved};
     saved = saved->_internal.next;
 
-    if (!Internal::anyThreadsUsingNode(curr)) {
+    // If not currently in-use, we can safely reset current node
+    if (!std::ranges::binary_search(snapshot, curr)) {
       curr->reset();
       curr->_internal.next = holdFree;
       holdFree = curr;
     } else {
+      // Otherwise, preserve back on the save list
+      ++saveCnt;
       curr->_internal.next = holdSave;
       holdSave = curr;
     }
   }
+
+  return saveCnt;
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -159,39 +184,18 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
   // nodes to free in the destructor
   block[0]._internal.isBlockStart = true;
 
-  // Chain the remaining nodes together and ensure their flags are false
-  for (Index i{1}; i + 1 < NodesPerBlock; ++i) {
-    block[i]._internal.next = std::addressof(block[i + 1]);
+  // Chain the nodes together and ensure their flags are false
+  for (Index i{0}; i + 1 < NodesPerBlock; ++i) {
+    block[i]._internal.next = block + i + 1;
   }
 
-  // Retrieve the heads and tails of the now chained block (nodes 1-255 will
-  // be pushed to the free list while the block head will be returned to the
-  // calling thread)
-  static_assert(NodesPerBlock > 1,
-                "Must allocate more than one node at a time for proper "
-                "chaining logic");
-  Node* const batchHead{std::addressof(block[1])};
-  Node* const batchTail{std::addressof(block[NodesPerBlock - 1])};
-
-  // Push this chain onto the free list
-  batchTail->_internal.next = freeHead_.load(MemoryOrder::relaxed);
-  while (!freeHead_.compare_exchange_weak(batchTail->_internal.next, batchHead,
-                                          MemoryOrder::release,
-                                          MemoryOrder::relaxed)) {}
-
-  // Hand the stolen first node directly back to the calling thread
-  return std::addressof(block[0]);
+  // Return the entire block to the calling thread
+  return block;
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches() {
-  // Preallocate a block of the set number of nodes
-  Node* const initialNode{allocateBlock()};
-
-  // Chain the "stolen" first node back onto the front of the free list
-  initialNode->_internal.next = freeHead_.load(MemoryOrder::relaxed);
-  freeHead_.store(initialNode, MemoryOrder::relaxed);
-}
+NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::GlobalNodeCaches()
+    : freeHead_{allocateBlock()} {}
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::~GlobalNodeCaches() {
@@ -271,6 +275,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
 
   // If we successfully detached a free node from the freelist
   if (freeNode) {
+    freeNode->_internal.next = nullptr;
     return freeNode;
   }
 
@@ -281,21 +286,30 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
     Node* holdFree{nullptr};  // Nodes that can be moved to free list
     Node* holdSave{nullptr};  // Nodes that remain in 'saved' state
 
-    // Use the consolidated helper to sort the stolen global nodes
-    tryRecycle(saved, holdFree, holdSave);
+    // Steal the calling thread's local cache snapshot to try to recycle nodes
+    ThreadNodeCache& local{getThreadCaches()};
+    tryRecycle(saved, holdFree, holdSave, local.hazardSnapshot_);
 
     // Return the still-pinned nodes back to the global save pool
     pushSave(holdSave);
 
-    TEST
-
-    // If we uncovered safe nodes, peel one off to return, cache the rest
+    // If we uncovered safe nodes, take a block to return, cache the rest
     if (holdFree) {
-      freeNode = holdFree;
-      holdFree = holdFree->_internal.next;
-      freeNode->_internal.next = nullptr;
-      pushFree(holdFree);
-      return freeNode;
+      Node* const freeBlockHead{holdFree};
+      Node* freeBlockTail{holdFree};
+      Index nodeCnt{0};
+
+      while (freeBlockTail && ++nodeCnt < NodesPerBlock) {
+        freeBlockTail = freeBlockTail->_internal.next;
+      }
+
+      // Push the rest of the nodes back to the free list
+      if (freeBlockTail) {
+        pushFree(freeBlockTail->_internal.next);
+        freeBlockTail->_internal.next = nullptr;
+      }
+
+      return freeBlockHead;
     }
   }
 
@@ -344,13 +358,32 @@ NodeAllocator<Node, NodesPerBlock>::getGlobalCaches() {
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
+NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::ThreadNodeCache() {
+  // Reserve up to the max number of hazards to prevent heap allocations
+  static_assert(std::is_same_v<std::underlying_type_t<HazardSlot>, Index>);
+  hazardSnapshot_.reserve(static_cast<Index>(HazardSlot::COUNT) * kMaxThreads);
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::~ThreadNodeCache() {
   globalCache_->pushFree(freeHead_);
   Node* holdFree{nullptr};  // nodes that are now free
   Node* holdSave{nullptr};  // nodes that need to remain saved for later
-  tryRecycle(saveHead_, holdFree, holdSave);
+  tryRecycle(saveHead_, holdFree, holdSave, hazardSnapshot_);
   globalCache_->pushFree(holdFree);
   globalCache_->pushSave(holdSave);
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
+Node* NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::askGlobalForNode() {
+  Node* const granted{globalCache_->askForNode()};
+  TW_ASSERT(granted != nullptr, "Received a null allocation from global cache");
+  Node* const rest{granted->_internal.next};
+  granted->_internal.next = nullptr;
+  TW_ASSERT(freeHead_ == nullptr,
+            "askForGlobal called when free list is non-empty");
+  freeHead_ = rest;  // safe (this is only ever called when free list is empty)
+  return granted;
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -366,9 +399,9 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
 
   // Try recycling local nodes if necessary
   if (!local.freeHead_) {
-    // Isolate the current local saved chain
     Node* const saved{std::exchange(local.saveHead_, nullptr)};
-    tryRecycle(saved, local.freeHead_, local.saveHead_);
+    local.saveCnt_ = tryRecycle(saved, local.freeHead_, local.saveHead_,
+                                local.hazardSnapshot_);
   }
 
   // Return node
@@ -394,17 +427,17 @@ void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* const node) noexcept {
     return;
   }
 
+  // Push deallocated node to save list
   ThreadNodeCache& local{getThreadCaches()};
+  node->_internal.next = local.saveHead_;
+  local.saveHead_ = node;
 
-  // If no threads are using node, we can immediately put it back on the free
-  // list, otherwise we have to save it for later
-  if (!Internal::anyThreadsUsingNode(node)) {
-    node->reset();
-    node->_internal.next = local.freeHead_;
-    local.freeHead_ = node;
-  } else {
-    node->_internal.next = local.saveHead_;
-    local.saveHead_ = node;
+  // Amortize the cost of trying to recycle/putting deallocated nodes back to
+  // the free list
+  if (++local.saveCnt_ >= NodesPerBlock) {
+    Node* const saved{std::exchange(local.saveHead_, nullptr)};
+    local.saveCnt_ = tryRecycle(saved, local.freeHead_, local.saveHead_,
+                                local.hazardSnapshot_);
   }
 }
 
