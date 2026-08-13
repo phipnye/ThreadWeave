@@ -6,13 +6,6 @@
 // nodes as much as possible and allocating in chunks. Ideally, this profiling
 // could should show malloc taking minimal time while the runtime is dominated
 // by other tasks like thread spawning.
-//
-// Build:
-//   g++ -std=c++23 -I../include -pthread -O2 -fno-omit-frame-pointer -g
-//   allocatorContention.cpp -o allocatorContention -DTW_NDEBUG -DNDEBUG
-// Run:
-//   perf record -g -- ./allocatorContention
-//   perf report
 
 #include <threadweave/TreiberStack.h>
 

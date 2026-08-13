@@ -118,9 +118,12 @@ std::optional<T> TreiberStack<T>::pop() {
       // Acquire pointer pointing to head node with a hazard pointer indicating
       // current thread's use
       popNode = headGuard.acquirePointerWithHazard(head_);
-    } while (popNode && !head_.compare_exchange_strong(popNode, popNode->next,
-                                                       MemoryOrder::acquire,
-                                                       MemoryOrder::relaxed));
+
+      // Despite potential costliness of acquiring pointer with hazard,
+      // profiling demonstrated better performance with weak CAS
+    } while (popNode && !head_.compare_exchange_weak(popNode, popNode->next,
+                                                     MemoryOrder::acquire,
+                                                     MemoryOrder::relaxed));
   }
 
   // Empty stack

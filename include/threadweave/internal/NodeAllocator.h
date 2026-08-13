@@ -136,6 +136,11 @@ template <AllocatorEligibleNode Node, Index NodesPerBlock>
 Index NodeAllocator<Node, NodesPerBlock>::tryRecycle(
     Node* saved, Node*& holdFree, Node*& holdSave,
     std::vector<const void*>& snapshot) noexcept {
+  // No saved nodes, early return to prevent costly work
+  if (!saved) {
+    return 0;
+  }
+
   // Ask hazard manager for an updated look at all of the pointers currently in
   // use
   snapshot.clear();
@@ -170,24 +175,26 @@ Index NodeAllocator<Node, NodesPerBlock>::tryRecycle(
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::allocateBlock() {
+  static_assert(NodesPerBlock > 0, "NodesPerBlock must be non-negative");
+
   // Allocate a full block of nodes (we do this to minimize the number of
   // times malloc has to be called)
   Node* block{new Node[NodesPerBlock]};
   TW_DEBUG_ONLY(nAllocs_.fetch_add(1, MemoryOrder::relaxed););
 
-  // Reset performs a "true" value initialization of the nodes
-  for (Index i{0}; i < NodesPerBlock; ++i) {
+  // Reset performs a "true" value initialization of the nodes and then chain
+  // the nodes together
+  for (Index i{0}; i + 1 < NodesPerBlock; ++i) {
     block[i].reset();
+    block[i]._internal.next = block + i + 1;
   }
+
+  // Reset the last node
+  block[NodesPerBlock - 1].reset();
 
   // Mark the absolute start of this OS allocation chunk so we know which
   // nodes to free in the destructor
   block[0]._internal.isBlockStart = true;
-
-  // Chain the nodes together and ensure their flags are false
-  for (Index i{0}; i + 1 < NodesPerBlock; ++i) {
-    block[i]._internal.next = block + i + 1;
-  }
 
   // Return the entire block to the calling thread
   return block;
@@ -264,10 +271,11 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
       // Try popping the head of the free list (note this is safe from ABA)
       // because other threads that may have already popped and tried to
       // deallocate this node will have pushed it back to saveHead and thus fail
-      // this CAS
-      if (freeHead_.compare_exchange_strong(freeNode, freeNode->_internal.next,
-                                            MemoryOrder::acquire,
-                                            MemoryOrder::relaxed)) {
+      // this CAS (note that profiling demonstrated better performance with weak
+      // CAS despite needing to re-acquire hazard)
+      if (freeHead_.compare_exchange_weak(freeNode, freeNode->_internal.next,
+                                          MemoryOrder::acquire,
+                                          MemoryOrder::relaxed)) {
         break;
       }
     }
@@ -280,9 +288,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
   }
 
   // Try recycling nodes from the save list
-  // clang-format off
   if (Node* const saved{saveHead_.exchange(nullptr, MemoryOrder::acquire)}) {
-    // clang-format on
     Node* holdFree{nullptr};  // Nodes that can be moved to free list
     Node* holdSave{nullptr};  // Nodes that remain in 'saved' state
 
@@ -366,12 +372,13 @@ NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::ThreadNodeCache() {
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
 NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::~ThreadNodeCache() {
+  TW_ASSERT(
+      globalCache_ != nullptr,
+      "Global cache smart pointer was invalidated before thread teardown");
+  Node* const saved{std::exchange(saveHead_, nullptr)};
+  tryRecycle(saved, freeHead_, saveHead_, hazardSnapshot_);
   globalCache_->pushFree(freeHead_);
-  Node* holdFree{nullptr};  // nodes that are now free
-  Node* holdSave{nullptr};  // nodes that need to remain saved for later
-  tryRecycle(saveHead_, holdFree, holdSave, hazardSnapshot_);
-  globalCache_->pushFree(holdFree);
-  globalCache_->pushSave(holdSave);
+  globalCache_->pushSave(saveHead_);
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
@@ -418,6 +425,9 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
     node = local.askGlobalForNode();
   }
 
+  TW_ASSERT(node != nullptr, "allocate() returning a nullptr");
+  TW_ASSERT(node->_internal.next == nullptr,
+            "allocated node still attached to list");
   return node;
 }
 
@@ -429,6 +439,8 @@ void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* const node) noexcept {
 
   // Push deallocated node to save list
   ThreadNodeCache& local{getThreadCaches()};
+  TW_ASSERT(node->_internal.next == nullptr,
+            "deallocate() received an internally linked node");
   node->_internal.next = local.saveHead_;
   local.saveHead_ = node;
 

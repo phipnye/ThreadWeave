@@ -77,9 +77,11 @@ Testing/
 
 # Perf data
 perf.data*
+*.perf
 
-# Profiling annotations
+# Profiling files
 profile/*.txt
+perf-taskset.sh
 
 # npx
 repomix-output.xml
