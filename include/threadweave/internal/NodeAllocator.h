@@ -273,11 +273,10 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
       // Try popping the head of the free list (note this is safe from ABA)
       // because other threads that may have already popped and tried to
       // deallocate this node will have pushed it back to saveHead and thus fail
-      // this CAS (note that profiling demonstrated better performance with weak
-      // CAS despite needing to re-acquire hazard)
-      if (freeHead_.compare_exchange_weak(freeNode, freeNode->_internal.next,
-                                          MemoryOrder::acquire,
-                                          MemoryOrder::relaxed)) {
+      // this CAS (profiling demonstrated better performance with strong CAS)
+      if (freeHead_.compare_exchange_strong(freeNode, freeNode->_internal.next,
+                                            MemoryOrder::acquire,
+                                            MemoryOrder::relaxed)) {
         break;
       }
     }
