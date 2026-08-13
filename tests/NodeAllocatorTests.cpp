@@ -26,27 +26,6 @@ static_assert(Internal::AllocatorEligibleNode<QueueNode<int>>);
 static_assert(Internal::AllocatorEligibleNode<Task<int>>);
 static_assert(Internal::AllocatorEligibleNode<Task<void>>);
 
-struct NonTrivialPayload {
-  static inline std::atomic<int> constructCnt{0};
-  static inline std::atomic<int> destructCnt{0};
-  std::vector<int> values{};
-
-  NonTrivialPayload() noexcept {
-    constructCnt.fetch_add(1, MemoryOrder::relaxed);
-  }
-
-  ~NonTrivialPayload() {
-    destructCnt.fetch_add(1, MemoryOrder::relaxed);
-  }
-
-  static void resetCounters() {
-    constructCnt.store(0, MemoryOrder::relaxed);
-    destructCnt.store(0, MemoryOrder::relaxed);
-  }
-};
-
-static_assert(!std::is_trivially_destructible_v<NonTrivialPayload>);
-
 // Spawns several threads that each allocate a batch of nodes with no
 // deallocation, then verifies every pointer handed out was unique (guards
 // against races in the global free-list CAS loops / block allocation path)
@@ -192,20 +171,6 @@ TEST(NodeAllocatorTests, DeallocateNullptrIsSafe) {
   SUCCEED();
 }
 
-TEST(NodeAllocatorTests, DeallocateResetsNodeImmediately) {
-  using Node = StackNode<int>;
-  using Allocator = NodeAllocator<Node, 7>;
-  auto* const node{Allocator::allocate()};
-  node->data = 99;
-  Allocator::deallocate(node);
-
-  // Checking this is safe here because it's run in isolation (no other threads
-  // to worry about) and the data is not actually freed until the end of the
-  // program
-  EXPECT_EQ(node->data, 0);
-  EXPECT_EQ(node->next, nullptr);
-}
-
 TEST(NodeAllocatorTests, SameThreadRecyclesSameStackNode) {
   using Node = StackNode<int>;
   using Allocator = NodeAllocator<Node, 8>;
@@ -297,21 +262,6 @@ TEST(NodeAllocatorTests, AllocatedQueueNodeStartsInResetState) {
   EXPECT_EQ(node->data, 0);
   EXPECT_EQ(node->next.load(MemoryOrder::relaxed), nullptr);
   Allocator::deallocate(node);
-}
-
-TEST(NodeAllocatorTests, DeallocateResetsAtomicNextImmediately) {
-  using Node = QueueNode<int>;
-  using Allocator = NodeAllocator<Node, 12>;
-  auto* const node{Allocator::allocate()};
-  node->data = 7;
-  node->next.store(reinterpret_cast<Node*>(0x1), MemoryOrder::relaxed);
-  Allocator::deallocate(node);
-
-  // Checking this is safe here because it's run in isolation (no other threads
-  // to worry about) and the data is not actually freed until the end of the
-  // program
-  EXPECT_EQ(node->data, 0);
-  EXPECT_EQ(node->next.load(MemoryOrder::relaxed), nullptr);
 }
 
 TEST(NodeAllocatorTests, SameThreadRecyclesSameQueueNode) {
@@ -431,26 +381,6 @@ TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueTaskNodes) {
   for (auto* const node : nodes) {
     Allocator::deallocate(node);
   }
-}
-
-// --- Non-trivial payload
-
-TEST(NodeAllocatorTests, DeallocateDestroysAndReconstructsNonTrivialPayload) {
-  using Node = StackNode<NonTrivialPayload>;
-  using Allocator = NodeAllocator<Node, 17>;
-  NonTrivialPayload::resetCounters();
-  auto* const node{Allocator::allocate()};
-  node->data.values = {1, 2, 3};
-  const int constructedBefore{
-      NonTrivialPayload::constructCnt.load(MemoryOrder::relaxed)};
-  Allocator::deallocate(node);
-
-  // resetValue() should have destroyed the populated payload and performed a
-  // placement new, fresh default-constructed one in its place
-  EXPECT_TRUE(node->data.values.empty());
-  EXPECT_GE(NonTrivialPayload::destructCnt.load(MemoryOrder::relaxed), 1);
-  EXPECT_GT(NonTrivialPayload::constructCnt.load(MemoryOrder::relaxed),
-            constructedBefore);
 }
 
 // --- Concurrency

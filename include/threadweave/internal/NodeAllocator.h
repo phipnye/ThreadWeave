@@ -35,16 +35,18 @@ class NodeAllocator {
     Node* allocateBlock();
 
    public:
+#ifndef TW_NDEBUG
+    // Keep track of the number of allocations to make sure there are no leaks
+    // (NOTE: This member must be initialized BEFORE freeHead_ gets initialized
+    // with allocateBlock() which modifies this value)
+    alignas(kCacheLineSize) mutable std::atomic<Index> nAllocs_{0};
+#endif
+
     // Free nodes
     alignas(kCacheLineSize) std::atomic<Node*> freeHead_;
 
     // Nodes that can't be reused yet
     alignas(kCacheLineSize) std::atomic<Node*> saveHead_{nullptr};
-
-#ifndef TW_NDEBUG
-    // Keep track of the number of allocations to make sure there are no leaks
-    alignas(kCacheLineSize) mutable std::atomic<Index> nAllocs_{0};
-#endif
 
     // Pre-allocate a fixed size of nodes
     GlobalNodeCaches();
@@ -418,6 +420,7 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
   if (local.freeHead_) {
     node = local.freeHead_;
     local.freeHead_ = node->_internal.next;
+    node->_internal.next = nullptr;
   } else {
     // Ask global pool for a node (if it has a free node, it will provide it, if
     // not this will perform a heap allocation which is not lock-free though
