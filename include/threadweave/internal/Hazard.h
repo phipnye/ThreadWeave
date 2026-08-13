@@ -6,6 +6,7 @@
 #include <atomic>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace ThreadWeave::Internal {
 
@@ -26,6 +27,9 @@ enum class HazardSlot : Index {
  * macro.
  */
 class ThreadHazardManager {
+  // Note: Profiling showed no benefit to cache aligning thread slots to
+  // mitigate false sharing. Linear search of the pointer usage burns cache
+  // lines and degrades performance.
   struct ThreadSlots {
     std::atomic<std::thread::id> id;
     std::atomic<void*> ptr[static_cast<Index>(HazardSlot::COUNT)];
@@ -75,6 +79,12 @@ class ThreadHazardManager {
    * @return true if nodePtr is used by any thread and false otherwise
    */
   static bool isPointerInUse(const void* nodePtr) noexcept;
+
+  /**
+   * Store a snapshot of the pointers actively in use
+   * @param snapshot a vector of pointers to store the active pointers in
+   */
+  static void getActivePointers(std::vector<const void*>& snapshot) noexcept;
 };
 
 inline ThreadHazardManager::ThreadHazardManager() : poolIdx_{kMaxThreads} {
@@ -158,6 +168,31 @@ inline bool ThreadHazardManager::isPointerInUse(
   }
 
   return false;
+}
+
+inline void ThreadHazardManager::getActivePointers(
+    std::vector<const void*>& snapshot) noexcept {
+  // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard.
+  // Without this, the removal that makes nodePtr eligible for recycling
+  // (e.g. the CAS or exchange that unlinks it) and this scan are only ordered
+  // by acquire/release, which permits an interleaving where a thread's
+  // hazard-slot publish is invisible and thus both threads see stale memory
+  // causing an ABA issue
+  std::atomic_thread_fence(MemoryOrder::seq_cst);
+
+  for (const auto& [id, ptrs] : slotsPool) {
+    // Empty id indicates no use
+    if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {
+      continue;
+    }
+
+    // Otherwise, check if any pointers point to same memory location
+    for (const auto& ptr : ptrs) {
+      if (const void* p{ptr.load(MemoryOrder::acquire)}) {
+        snapshot.push_back(p);
+      }
+    }
+  }
 }
 
 /**

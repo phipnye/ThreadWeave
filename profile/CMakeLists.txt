@@ -1,0 +1,3 @@
+add_executable(allocatorContention allocatorContention.cpp)
+target_link_libraries(allocatorContention PRIVATE ThreadWeave)
+target_compile_options(allocatorContention PRIVATE -g -fno-omit-frame-pointer)

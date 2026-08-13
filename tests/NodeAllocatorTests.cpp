@@ -12,6 +12,9 @@
 #include <type_traits>
 #include <vector>
 
+// TODO: Some tests won't pass right now since recycling does not happen
+// immediately anymore
+
 using namespace ThreadWeave;
 using Internal::NodeAllocator;
 using Internal::QueueNode;
@@ -24,21 +27,21 @@ static_assert(Internal::AllocatorEligibleNode<Task<int>>);
 static_assert(Internal::AllocatorEligibleNode<Task<void>>);
 
 struct NonTrivialPayload {
-  static inline std::atomic<int> constructCount{0};
-  static inline std::atomic<int> destructCount{0};
+  static inline std::atomic<int> constructCnt{0};
+  static inline std::atomic<int> destructCnt{0};
   std::vector<int> values{};
 
   NonTrivialPayload() noexcept {
-    constructCount.fetch_add(1, MemoryOrder::relaxed);
+    constructCnt.fetch_add(1, MemoryOrder::relaxed);
   }
 
   ~NonTrivialPayload() {
-    destructCount.fetch_add(1, MemoryOrder::relaxed);
+    destructCnt.fetch_add(1, MemoryOrder::relaxed);
   }
 
   static void resetCounters() {
-    constructCount.store(0, MemoryOrder::relaxed);
-    destructCount.store(0, MemoryOrder::relaxed);
+    constructCnt.store(0, MemoryOrder::relaxed);
+    destructCnt.store(0, MemoryOrder::relaxed);
   }
 };
 
@@ -439,14 +442,14 @@ TEST(NodeAllocatorTests, DeallocateDestroysAndReconstructsNonTrivialPayload) {
   auto* const node{Allocator::allocate()};
   node->data.values = {1, 2, 3};
   const int constructedBefore{
-      NonTrivialPayload::constructCount.load(MemoryOrder::relaxed)};
+      NonTrivialPayload::constructCnt.load(MemoryOrder::relaxed)};
   Allocator::deallocate(node);
 
   // resetValue() should have destroyed the populated payload and performed a
   // placement new, fresh default-constructed one in its place
   EXPECT_TRUE(node->data.values.empty());
-  EXPECT_GE(NonTrivialPayload::destructCount.load(MemoryOrder::relaxed), 1);
-  EXPECT_GT(NonTrivialPayload::constructCount.load(MemoryOrder::relaxed),
+  EXPECT_GE(NonTrivialPayload::destructCnt.load(MemoryOrder::relaxed), 1);
+  EXPECT_GT(NonTrivialPayload::constructCnt.load(MemoryOrder::relaxed),
             constructedBefore);
 }
 

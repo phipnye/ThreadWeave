@@ -76,7 +76,10 @@ Testing/
 **/~archive/
 
 # Perf data
-perf.data
+perf.data*
+
+# Profiling annotations
+profile/*.txt
 
 # npx
 repomix-output.xml
