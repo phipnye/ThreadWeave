@@ -287,6 +287,8 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
     // Return the still-pinned nodes back to the global save pool
     pushSave(holdSave);
 
+    TEST
+
     // If we uncovered safe nodes, peel one off to return, cache the rest
     if (holdFree) {
       freeNode = holdFree;
