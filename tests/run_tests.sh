@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for cmd in cmake g++; do
-    if ! command -v "${cmd}" &> /dev/null; then
-        echo "  [ERROR] Required command '${cmd}' is not installed or not in PATH." >&2
-        exit 1
-    fi
-done
+if ! command -v cmake &> /dev/null; then
+    echo "  [ERROR] Required command 'cmake' is not installed or not in PATH." >&2
+    exit 1
+fi
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${TEST_DIR}/../cmake-build-debug"

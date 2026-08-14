@@ -10,13 +10,13 @@
 
 namespace ThreadWeave::Internal {
 
-// Enum tracking the index of a hazard slot
+// Enum tracking the index of a hazard pointer
 enum class HazardSlot : Index {
   Stack0 = 0,  // Stack only requires one hazard
   Queue0 = 0,  // Queue requires two hazards
   Queue1 = 1,
   Alloc2 = 2,  // Future requires one isolated hazard
-  COUNT = 3    // Number of hazard slots per thread
+  COUNT = 3    // Number of hazard pointers per thread
 };
 
 /**
@@ -27,16 +27,28 @@ enum class HazardSlot : Index {
  * macro.
  */
 class ThreadHazardManager {
-  // Note: Profiling showed no benefit to cache aligning thread slots to
-  // mitigate false sharing. Linear search of the pointer usage burns cache
-  // lines and degrades performance.
-  struct ThreadSlots {
-    std::atomic<std::thread::id> id;
-    std::atomic<void*> ptr[static_cast<Index>(HazardSlot::COUNT)];
+  struct alignas(kCacheLineSize) HazardPointerSlots {
+    std::atomic<void*> hps[static_cast<Index>(HazardSlot::COUNT)];
+
+    // Range-based loop support
+    auto begin() noexcept(noexcept(std::begin(hps))) {
+      return std::begin(hps);
+    }
+    auto end() noexcept(noexcept(std::end(hps))) {
+      return std::end(hps);
+    }
+    auto cbegin() const noexcept(noexcept(std::cbegin(hps))) {
+      return std::cbegin(hps);
+    }
+    auto cend() const noexcept(noexcept(std::cend(hps))) {
+      return std::cend(hps);
+    }
   };
 
-  // Pool of thread slots and their associated IDs
-  static inline ThreadSlots slotsPool[kMaxThreads]{};
+  // Keep the high-frequency written hazard slots padded while thread ownership
+  // data (IDs) in a separate dense array
+  static inline HazardPointerSlots hpsPool[kMaxThreads]{};
+  static inline std::atomic<std::thread::id> threadIds[kMaxThreads]{};
 
   // --- Data members
   Index poolIdx_;  // manager's thread slot index
@@ -91,7 +103,7 @@ inline ThreadHazardManager::ThreadHazardManager() : poolIdx_{kMaxThreads} {
   // Search for the first available slot in our thread slot pool
   for (Index i{0}; i < kMaxThreads; ++i) {
     // Check ith slot to see if it's been claimed yet
-    auto& [id, ptrs]{slotsPool[i]};
+    std::atomic<std::thread::id>& id{threadIds[i]};
 
     // If the ID is unset, claim this slot and store this thread's ID
     if (std::thread::id emptyId{}; id.compare_exchange_strong(
@@ -114,20 +126,20 @@ inline ThreadHazardManager::~ThreadHazardManager() {
   // this thread slot
   TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
             "Attempting to destroy uninitialized manager slot");
-  auto& [id, ptrs]{slotsPool[poolIdx_]};
+  auto& hps{hpsPool[poolIdx_]};
 
-  for (auto& ptr : ptrs) {
-    ptr.store(nullptr, MemoryOrder::relaxed);
+  for (auto& hp : hps) {
+    hp.store(nullptr, MemoryOrder::relaxed);
   }
 
 #ifndef TW_NDEBUG
-  for (const auto& ptr : ptrs) {
-    TW_ASSERT(ptr.load(MemoryOrder::relaxed) == nullptr,
+  for (const auto& hp : hps) {
+    TW_ASSERT(hp.load(MemoryOrder::relaxed) == nullptr,
               "Hazard pointer failed to clear during slot release");
   }
 #endif
 
-  id.store(std::thread::id{}, MemoryOrder::release);
+  threadIds[poolIdx_].store(std::thread::id{}, MemoryOrder::release);
 }
 
 inline std::atomic<void*>& ThreadHazardManager::getPointer(
@@ -136,7 +148,7 @@ inline std::atomic<void*>& ThreadHazardManager::getPointer(
             "Invalid or uninitialized poolIdx_ in ThreadHazardManager");
   TW_ASSERT(idx >= 0 && idx < static_cast<Index>(HazardSlot::COUNT),
             "Hazard slot index out of bounds");
-  return slotsPool[poolIdx_].ptr[idx];
+  return hpsPool[poolIdx_].hps[idx];
 }
 
 inline bool ThreadHazardManager::isPointerInUse(
@@ -153,15 +165,15 @@ inline bool ThreadHazardManager::isPointerInUse(
   // causing an ABA issue
   std::atomic_thread_fence(MemoryOrder::seq_cst);
 
-  for (const auto& [id, ptrs] : slotsPool) {
+  for (Index i{0}; i < kMaxThreads; ++i) {
     // Empty id indicates no use
-    if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {
+    if (threadIds[i].load(MemoryOrder::relaxed) == std::thread::id{}) {
       continue;
     }
 
     // Otherwise, check if any pointers point to same memory location
-    for (const auto& ptr : ptrs) {
-      if (ptr.load(MemoryOrder::acquire) == nodePtr) {
+    for (const auto& hp : hpsPool[i]) {
+      if (hp.load(MemoryOrder::acquire) == nodePtr) {
         return true;
       }
     }
@@ -180,15 +192,15 @@ inline void ThreadHazardManager::getActivePointers(
   // causing an ABA issue
   std::atomic_thread_fence(MemoryOrder::seq_cst);
 
-  for (const auto& [id, ptrs] : slotsPool) {
+  for (Index i{0}; i < kMaxThreads; ++i) {
     // Empty id indicates no use
-    if (id.load(MemoryOrder::relaxed) == std::thread::id{}) {
+    if (threadIds[i].load(MemoryOrder::relaxed) == std::thread::id{}) {
       continue;
     }
 
     // Otherwise, check if any pointers point to same memory location
-    for (const auto& ptr : ptrs) {
-      if (const void* p{ptr.load(MemoryOrder::acquire)}) {
+    for (const auto& hp : hpsPool[i]) {
+      if (const void* p{hp.load(MemoryOrder::acquire)}) {
         snapshot.push_back(p);
       }
     }

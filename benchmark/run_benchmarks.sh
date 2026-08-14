@@ -9,7 +9,7 @@ if ! [[ "${REPETITIONS}" =~ ^[0-9]+$ ]] || [ "${REPETITIONS}" -le 1 ]; then
     exit 1
 fi
 
-for cmd in cmake g++ Rscript; do
+for cmd in cmake Rscript; do
     if ! command -v "${cmd}" &> /dev/null; then
         echo "  [ERROR] Required command '${cmd}' is not installed or not in PATH." >&2
         exit 1

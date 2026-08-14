@@ -1,10 +1,10 @@
 {
   "context": {
-    "date": "2026-08-13T02:43:41-07:00",
+    "date": "2026-08-14T02:12:36-07:00",
     "host_name": "philip-ThinkPad-X1-Carbon-Gen-10",
     "executable": "/home/philip/Documents/Cpp_projects/ThreadWeave/benchmark/../cmake-build-release/benchmark/LatencyBenchmark",
     "num_cpus": 16,
-    "mhz_per_cpu": 518,
+    "mhz_per_cpu": 3493,
     "cpu_scaling_enabled": false,
     "aslr_enabled": false,
     "caches": [
@@ -33,7 +33,7 @@
         "num_sharing": 16
       }
     ],
-    "load_avg": [3.64453,3.33936,2.74121],
+    "load_avg": [3.56299,3.30371,2.84375],
     "library_version": "v1.9.5",
     "library_build_type": "release",
     "json_schema_version": 1
@@ -50,8 +50,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2642139466808000e+00,
-      "cpu_time": 1.2287413653082291e+00,
+      "real_time": 7.0312346397670311e-01,
+      "cpu_time": 6.9992289799395047e-01,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -66,8 +66,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2396989381738917e+00,
-      "cpu_time": 1.2188846302327101e+00,
+      "real_time": 6.8713060065929144e-01,
+      "cpu_time": 6.8581089313514354e-01,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -82,8 +82,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 9.1725040899658744e-02,
-      "cpu_time": 8.6085145973726865e-02,
+      "real_time": 6.6535585381783405e-02,
+      "cpu_time": 6.2296034529982627e-02,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -98,8 +98,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 7.2554998416591812e-02,
-      "cpu_time": 7.0059614174486945e-02,
+      "real_time": 9.4628594820991410e-02,
+      "cpu_time": 8.9004138468007449e-02,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -114,8 +114,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.6529324204068798e+00,
-      "cpu_time": 5.9311635508491625e+00,
+      "real_time": 6.9124012808470567e+00,
+      "cpu_time": 5.4494860014601763e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -130,8 +130,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 8.2464626949377369e+00,
-      "cpu_time": 6.3954466224121109e+00,
+      "real_time": 6.0091414031472219e+00,
+      "cpu_time": 4.9509321071881711e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -146,8 +146,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.8480178823351374e+00,
-      "cpu_time": 1.1824390734374794e+00,
+      "real_time": 1.6073159660361303e+00,
+      "cpu_time": 9.8762566826148412e-01,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -162,8 +162,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 2.4147840080324198e-01,
-      "cpu_time": 1.9936038912098286e-01,
+      "real_time": 2.3252642616245323e-01,
+      "cpu_time": 1.8123281131410418e-01,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -178,8 +178,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 8.3770374951688726e+00,
-      "cpu_time": 6.9229574810423511e+00,
+      "real_time": 9.6317564343934752e+00,
+      "cpu_time": 7.7549532604326767e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -194,8 +194,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 8.3412780791560017e+00,
-      "cpu_time": 7.0047790710751299e+00,
+      "real_time": 9.5734526294801352e+00,
+      "cpu_time": 7.8134404184891837e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -210,8 +210,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.4393241424197734e-01,
-      "cpu_time": 5.3647018231361476e-01,
+      "real_time": 6.5397513462285406e-01,
+      "cpu_time": 4.9563966415547156e-01,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -226,8 +226,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 7.6868751585908515e-02,
-      "cpu_time": 7.7491474385430054e-02,
+      "real_time": 6.7897806498471311e-02,
+      "cpu_time": 6.3912656531964457e-02,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -242,8 +242,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.6700564353861367e+00,
-      "cpu_time": 4.0541295464809295e+00,
+      "real_time": 6.3047176393765136e+00,
+      "cpu_time": 3.7858358629953037e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -258,8 +258,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.6791850119072560e+00,
-      "cpu_time": 4.0489667676995786e+00,
+      "real_time": 6.2926171523881012e+00,
+      "cpu_time": 3.7845449518692766e+00,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -274,8 +274,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2852463151141158e-01,
-      "cpu_time": 1.1606507185027459e-01,
+      "real_time": 8.3372388661720948e-02,
+      "cpu_time": 7.8445263795975745e-02,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -290,8 +290,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 1.9268897160983491e-02,
-      "cpu_time": 2.8628851278573852e-02,
+      "real_time": 1.3223810078505880e-02,
+      "cpu_time": 2.0720724995697742e-02,
       "time_unit": "us",
       "label": "category=Latency;library=ThreadWeave"
     },
@@ -306,10 +306,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 4.5715620255121898e+01,
-      "cpu_time": 4.5007317867433883e+01,
+      "real_time": 3.3379483705453673e+01,
+      "cpu_time": 3.1738532164674485e+01,
       "time_unit": "us",
-      "amortized_service_time": 4.5715620255121901e-07,
+      "amortized_service_time": 3.3379483705453674e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -323,10 +323,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 4.2784369683331974e+01,
-      "cpu_time": 4.2292527953851433e+01,
+      "real_time": 3.2396094780963047e+01,
+      "cpu_time": 3.0805564810580091e+01,
       "time_unit": "us",
-      "amortized_service_time": 4.2784369683331976e-07,
+      "amortized_service_time": 3.2396094780963050e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -340,10 +340,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.0250735003515674e+01,
-      "cpu_time": 1.0211506738574167e+01,
+      "real_time": 4.9587135683992365e+00,
+      "cpu_time": 4.1508681712479545e+00,
       "time_unit": "us",
-      "amortized_service_time": 1.0250735003515666e-07,
+      "amortized_service_time": 4.9587135683992551e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -357,10 +357,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 2.2422828228754479e-01,
-      "cpu_time": 2.2688547601640013e-01,
+      "real_time": 1.4855572998539407e-01,
+      "cpu_time": 1.3078324321084828e-01,
       "time_unit": "us",
-      "amortized_service_time": 2.2422828228754463e-01,
+      "amortized_service_time": 1.4855572998539460e-01,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -374,10 +374,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.2594249316025525e+01,
-      "cpu_time": 7.2069745409997807e+01,
+      "real_time": 5.0585158451753770e+01,
+      "cpu_time": 4.8819655892005393e+01,
       "time_unit": "us",
-      "amortized_service_time": 7.2594249316025524e-07,
+      "amortized_service_time": 5.0585158451753768e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -391,10 +391,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.2598907220526598e+01,
-      "cpu_time": 7.2079786349956990e+01,
+      "real_time": 4.8875188770413054e+01,
+      "cpu_time": 4.7256688209150994e+01,
       "time_unit": "us",
-      "amortized_service_time": 7.2598907220526602e-07,
+      "amortized_service_time": 4.8875188770413049e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -408,10 +408,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 9.9805023136174640e+00,
-      "cpu_time": 9.7922155407239266e+00,
+      "real_time": 4.1227314340766190e+00,
+      "cpu_time": 3.9209918116521569e+00,
       "time_unit": "us",
-      "amortized_service_time": 9.9805023136174142e-08,
+      "amortized_service_time": 4.1227314340765295e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -425,10 +425,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 1.3748337378859318e-01,
-      "cpu_time": 1.3587137688661116e-01,
+      "real_time": 8.1500810914899594e-02,
+      "cpu_time": 8.0315842871277812e-02,
       "time_unit": "us",
-      "amortized_service_time": 1.3748337378859252e-01,
+      "amortized_service_time": 8.1500810914897831e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -442,10 +442,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 8.1968106420638136e+01,
-      "cpu_time": 8.1715226452263138e+01,
+      "real_time": 7.5028695584583886e+01,
+      "cpu_time": 7.3498069331822279e+01,
       "time_unit": "us",
-      "amortized_service_time": 8.1968106420638136e-07,
+      "amortized_service_time": 7.5028695584583879e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -459,10 +459,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 8.1216977945222141e+01,
-      "cpu_time": 8.0982281678191356e+01,
+      "real_time": 7.4274696243505815e+01,
+      "cpu_time": 7.2610676837366697e+01,
       "time_unit": "us",
-      "amortized_service_time": 8.1216977945222135e-07,
+      "amortized_service_time": 7.4274696243505814e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -476,10 +476,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 2.4747130164693596e+00,
-      "cpu_time": 2.3971567794090016e+00,
+      "real_time": 1.2888229792747299e+00,
+      "cpu_time": 1.3484701012321334e+00,
       "time_unit": "us",
-      "amortized_service_time": 2.4747130164689815e-08,
+      "amortized_service_time": 1.2888229792752376e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -493,10 +493,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 3.0191169767541076e-02,
-      "cpu_time": 2.9335496987325686e-02,
+      "real_time": 1.7177734055389120e-02,
+      "cpu_time": 1.8347013921470316e-02,
       "time_unit": "us",
-      "amortized_service_time": 3.0191169767536462e-02,
+      "amortized_service_time": 1.7177734055395889e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -510,10 +510,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.3088568847679966e+02,
-      "cpu_time": 1.2986019916382006e+02,
+      "real_time": 1.3657367584498613e+02,
+      "cpu_time": 1.3324468941659080e+02,
       "time_unit": "us",
-      "amortized_service_time": 1.3088568847679965e-06,
+      "amortized_service_time": 1.3657367584498616e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -527,10 +527,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2998303715137632e+02,
-      "cpu_time": 1.2871870347342383e+02,
+      "real_time": 1.3590960301308223e+02,
+      "cpu_time": 1.3161565117709159e+02,
       "time_unit": "us",
-      "amortized_service_time": 1.2998303715137632e-06,
+      "amortized_service_time": 1.3590960301308222e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -544,10 +544,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.0415197684613888e+00,
-      "cpu_time": 2.3725101768549601e+00,
+      "real_time": 4.9641039908688125e+00,
+      "cpu_time": 4.3332122236046882e+00,
       "time_unit": "us",
-      "amortized_service_time": 3.0415197684608567e-08,
+      "amortized_service_time": 4.9641039908681901e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -561,10 +561,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 2.3237985786356757e-02,
-      "cpu_time": 1.8269725382617136e-02,
+      "real_time": 3.6347443679433294e-02,
+      "cpu_time": 3.2520712401954407e-02,
       "time_unit": "us",
-      "amortized_service_time": 2.3237985786352694e-02,
+      "amortized_service_time": 3.6347443679428729e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -578,10 +578,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.9824128887014774e+02,
-      "cpu_time": 3.7016516299214652e+02,
+      "real_time": 2.2743287012875325e+02,
+      "cpu_time": 1.9135388041628494e+02,
       "time_unit": "us",
-      "amortized_service_time": 3.9824128887014775e-07,
+      "amortized_service_time": 2.2743287012875330e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -595,10 +595,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.6874326069951132e+02,
-      "cpu_time": 3.4753870127960812e+02,
+      "real_time": 2.1894638510967201e+02,
+      "cpu_time": 1.7842686447497348e+02,
       "time_unit": "us",
-      "amortized_service_time": 3.6874326069951133e-07,
+      "amortized_service_time": 2.1894638510967197e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -612,10 +612,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 9.8865136186836722e+01,
-      "cpu_time": 8.6987946377446491e+01,
+      "real_time": 2.2732926029018657e+01,
+      "cpu_time": 3.1385151724074660e+01,
       "time_unit": "us",
-      "amortized_service_time": 9.8865136186836432e-08,
+      "amortized_service_time": 2.2732926029018060e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -629,10 +629,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 2.4825435973082413e-01,
-      "cpu_time": 2.3499765800298186e-01,
+      "real_time": 9.9954443771250803e-02,
+      "cpu_time": 1.6401628049453273e-01,
       "time_unit": "us",
-      "amortized_service_time": 2.4825435973082344e-01,
+      "amortized_service_time": 9.9954443771248180e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -646,10 +646,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.2920893834088929e+02,
-      "cpu_time": 6.2853405500003078e+02,
+      "real_time": 3.8180555928466691e+02,
+      "cpu_time": 3.8124875697136576e+02,
       "time_unit": "us",
-      "amortized_service_time": 6.2920893834088933e-07,
+      "amortized_service_time": 3.8180555928466685e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -663,10 +663,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.3481974301976152e+02,
-      "cpu_time": 6.3484196350026070e+02,
+      "real_time": 3.7542555207839808e+02,
+      "cpu_time": 3.7377696722060966e+02,
       "time_unit": "us",
-      "amortized_service_time": 6.3481974301976147e-07,
+      "amortized_service_time": 3.7542555207839807e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -680,10 +680,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.3011490265940552e+01,
-      "cpu_time": 3.3783828869365706e+01,
+      "real_time": 3.1376944343457733e+01,
+      "cpu_time": 3.1493494932379257e+01,
       "time_unit": "us",
-      "amortized_service_time": 3.3011490265940758e-08,
+      "amortized_service_time": 3.1376944343458551e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -697,10 +697,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 5.2465068841815739e-02,
-      "cpu_time": 5.3750196350719703e-02,
+      "real_time": 8.2180428179841364e-02,
+      "cpu_time": 8.2606157676586536e-02,
       "time_unit": "us",
-      "amortized_service_time": 5.2465068841816065e-02,
+      "amortized_service_time": 8.2180428179843515e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -714,10 +714,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.4647634046367887e+02,
-      "cpu_time": 7.3853284351142565e+02,
+      "real_time": 6.0936380898347136e+02,
+      "cpu_time": 6.0933986409989416e+02,
       "time_unit": "us",
-      "amortized_service_time": 7.4647634046367887e-07,
+      "amortized_service_time": 6.0936380898347137e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -731,10 +731,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.3024913312869649e+02,
-      "cpu_time": 7.3037301081425119e+02,
+      "real_time": 6.0526875522918999e+02,
+      "cpu_time": 6.0531275749988106e+02,
       "time_unit": "us",
-      "amortized_service_time": 7.3024913312869654e-07,
+      "amortized_service_time": 6.0526875522918997e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -748,10 +748,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 4.5749826932109400e+01,
-      "cpu_time": 2.3997208205543799e+01,
+      "real_time": 3.5444640721575176e+01,
+      "cpu_time": 3.5406850613973759e+01,
       "time_unit": "us",
-      "amortized_service_time": 4.5749826932110909e-08,
+      "amortized_service_time": 3.5444640721574565e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -765,10 +765,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 6.1287711950376862e-02,
-      "cpu_time": 3.2493081948050895e-02,
+      "real_time": 5.8166632476423619e-02,
+      "cpu_time": 5.8106900106192995e-02,
       "time_unit": "us",
-      "amortized_service_time": 6.1287711950378888e-02,
+      "amortized_service_time": 5.8166632476422606e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -782,10 +782,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2704300019369880e+03,
-      "cpu_time": 1.1848084552043870e+03,
+      "real_time": 1.2740641878917813e+03,
+      "cpu_time": 1.2406682765767218e+03,
       "time_unit": "us",
-      "amortized_service_time": 1.2704300019369879e-06,
+      "amortized_service_time": 1.2740641878917813e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -799,10 +799,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.2665089450475371e+03,
-      "cpu_time": 1.1845239990705320e+03,
+      "real_time": 1.2712637350584068e+03,
+      "cpu_time": 1.2523309360362191e+03,
       "time_unit": "us",
-      "amortized_service_time": 1.2665089450475368e-06,
+      "amortized_service_time": 1.2712637350584070e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -816,10 +816,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 2.2287555637897988e+01,
-      "cpu_time": 2.2739979200963695e+01,
+      "real_time": 2.2227989870918726e+01,
+      "cpu_time": 2.7741796624847257e+01,
       "time_unit": "us",
-      "amortized_service_time": 2.2287555637894982e-08,
+      "amortized_service_time": 2.2227989870927623e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -833,10 +833,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 1.7543316517963831e-02,
-      "cpu_time": 1.9192958238165938e-02,
+      "real_time": 1.7446522775041509e-02,
+      "cpu_time": 2.2360365900055901e-02,
       "time_unit": "us",
-      "amortized_service_time": 1.7543316517961469e-02,
+      "amortized_service_time": 1.7446522775048493e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -850,10 +850,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.9695645533150664e+03,
-      "cpu_time": 3.6016295245280621e+03,
+      "real_time": 2.3189269946950594e+03,
+      "cpu_time": 1.7286827325503473e+03,
       "time_unit": "us",
-      "amortized_service_time": 3.9695645533150655e-07,
+      "amortized_service_time": 2.3189269946950596e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -867,10 +867,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 3.7261747674388325e+03,
-      "cpu_time": 3.3867127735844965e+03,
+      "real_time": 2.3489876708090806e+03,
+      "cpu_time": 1.7978341812078731e+03,
       "time_unit": "us",
-      "amortized_service_time": 3.7261747674388319e-07,
+      "amortized_service_time": 2.3489876708090805e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -884,10 +884,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.2239323008522979e+02,
-      "cpu_time": 6.0148362755864468e+02,
+      "real_time": 1.1036272511342308e+02,
+      "cpu_time": 1.8913538394183539e+02,
       "time_unit": "us",
-      "amortized_service_time": 7.2239323008523543e-08,
+      "amortized_service_time": 1.1036272511342011e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -901,10 +901,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 1.8198299092577902e-01,
-      "cpu_time": 1.6700319215576731e-01,
+      "real_time": 4.7592151614042455e-02,
+      "cpu_time": 1.0941011926624705e-01,
       "time_unit": "us",
-      "amortized_service_time": 1.8198299092578049e-01,
+      "amortized_service_time": 4.7592151614041164e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -918,10 +918,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.2302129583549695e+03,
-      "cpu_time": 6.2123655479997815e+03,
+      "real_time": 4.0842692234432543e+03,
+      "cpu_time": 4.0650404706106592e+03,
       "time_unit": "us",
-      "amortized_service_time": 6.2302129583549685e-07,
+      "amortized_service_time": 4.0842692234432542e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -935,10 +935,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.2984088968369188e+03,
-      "cpu_time": 6.2966657949998962e+03,
+      "real_time": 4.0738055596256077e+03,
+      "cpu_time": 4.0549516603050447e+03,
       "time_unit": "us",
-      "amortized_service_time": 6.2984088968369183e-07,
+      "amortized_service_time": 4.0738055596256076e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -952,10 +952,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 4.0569562780664444e+02,
-      "cpu_time": 3.9335554473127917e+02,
+      "real_time": 2.5199349736736298e+02,
+      "cpu_time": 2.5635903393903550e+02,
       "time_unit": "us",
-      "amortized_service_time": 4.0569562780665538e-08,
+      "amortized_service_time": 2.5199349736736961e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -969,10 +969,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 6.5117457544142235e-02,
-      "cpu_time": 6.3318158226849580e-02,
+      "real_time": 6.1698552074125806e-02,
+      "cpu_time": 6.3064325138323829e-02,
       "time_unit": "us",
-      "amortized_service_time": 6.5117457544143983e-02,
+      "amortized_service_time": 6.1698552074127423e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -986,10 +986,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.1220893800687409e+03,
-      "cpu_time": 7.0752004118812592e+03,
+      "real_time": 5.8597732984926561e+03,
+      "cpu_time": 5.8523219299999455e+03,
       "time_unit": "us",
-      "amortized_service_time": 7.1220893800687426e-07,
+      "amortized_service_time": 5.8597732984926552e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1003,10 +1003,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 7.0741861398184292e+03,
-      "cpu_time": 7.0426266089102955e+03,
+      "real_time": 5.8684153342619538e+03,
+      "cpu_time": 5.8629837299999108e+03,
       "time_unit": "us",
-      "amortized_service_time": 7.0741861398184286e-07,
+      "amortized_service_time": 5.8684153342619536e-07,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1020,10 +1020,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.4447834157988882e+02,
-      "cpu_time": 1.0881961581837713e+02,
+      "real_time": 7.3659726391180882e+01,
+      "cpu_time": 7.4931654237697472e+01,
       "time_unit": "us",
-      "amortized_service_time": 1.4447834157983134e-08,
+      "amortized_service_time": 7.3659726391259887e-09,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1037,10 +1037,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 2.0285948949786182e-02,
-      "cpu_time": 1.5380428748793923e-02,
+      "real_time": 1.2570405481408095e-02,
+      "cpu_time": 1.2803747834442556e-02,
       "time_unit": "us",
-      "amortized_service_time": 2.0285948949778108e-02,
+      "amortized_service_time": 1.2570405481421579e-02,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1054,10 +1054,10 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.1881031981812648e+04,
-      "cpu_time": 8.3372009000001181e+03,
+      "real_time": 1.0634456810617998e+04,
+      "cpu_time": 7.5406048342465310e+03,
       "time_unit": "us",
-      "amortized_service_time": 1.1881031981812647e-06,
+      "amortized_service_time": 1.0634456810618000e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1071,10 +1071,10 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 1.1760356464387420e+04,
-      "cpu_time": 8.2886279000002960e+03,
+      "real_time": 1.0676616440807815e+04,
+      "cpu_time": 7.5250548287669590e+03,
       "time_unit": "us",
-      "amortized_service_time": 1.1760356464387421e-06,
+      "amortized_service_time": 1.0676616440807815e-06,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1088,10 +1088,10 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 10,
-      "real_time": 6.8730186192465021e+02,
-      "cpu_time": 1.9418794580244565e+02,
+      "real_time": 3.3640324875467593e+02,
+      "cpu_time": 1.8190691961302073e+02,
       "time_unit": "us",
-      "amortized_service_time": 6.8730186192469213e-08,
+      "amortized_service_time": 3.3640324875463733e-08,
       "label": "category=Latency;library=ThreadWeave"
     },
     {
@@ -1105,10 +1105,10 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 10,
-      "real_time": 5.7848666932027809e-02,
-      "cpu_time": 2.3291743611748985e-02,
+      "real_time": 3.1633326905685800e-02,
+      "cpu_time": 2.4123651034843964e-02,
       "time_unit": "us",
-      "amortized_service_time": 5.7848666932031348e-02,
+      "amortized_service_time": 3.1633326905682164e-02,
       "label": "category=Latency;library=ThreadWeave"
     }
   ]

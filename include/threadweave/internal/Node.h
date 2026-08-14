@@ -54,9 +54,9 @@ void resetValue(T& value) noexcept {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T>)
 struct StackNode {
-  T data{};
   StackNode* next{nullptr};
   AllocatorInfo<StackNode> _internal{};
+  T data{};
 
   void reset() noexcept {
     resetValue(data);
@@ -73,9 +73,9 @@ struct StackNode {
 template <typename T>
   requires(std::is_nothrow_default_constructible_v<T>)
 struct QueueNode {
-  T data{};
   std::atomic<QueueNode*> next{nullptr};
   AllocatorInfo<QueueNode> _internal{};
+  T data{};
 
   void reset() noexcept {
     resetValue(data);

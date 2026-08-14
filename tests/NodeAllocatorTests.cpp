@@ -11,9 +11,6 @@
 #include <thread>
 #include <vector>
 
-// TODO: Some tests won't pass right now since recycling does not happen
-// immediately anymore
-
 using namespace ThreadWeave;
 using Internal::NodeAllocator;
 using Internal::QueueNode;

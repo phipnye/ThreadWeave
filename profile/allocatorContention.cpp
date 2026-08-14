@@ -1,11 +1,11 @@
 // The idea here is to measure the effectiveness of the node allocator at
-// minimizing malloc calls. Under instances where the allocator's global cache
-// runs out, all threads can technically "instruct" the global cache to call
+// minimizing malloc calls. Under instances where the allocator's global pool
+// runs out, all threads can technically "instruct" the global pool to call
 // malloc at the same time which is slow especially under contention. The
 // underlying implementation tries to minimize this contention by recycling
-// nodes as much as possible and allocating in chunks. Ideally, this profiling
-// could should show malloc taking minimal time while the runtime is dominated
-// by other tasks like thread spawning.
+// nodes as much as possible and allocating in blocks. Ideally, this profiling
+// should show malloc taking minimal time while the runtime is dominated by
+// other tasks like thread spawning.
 
 #include <threadweave/TreiberStack.h>
 
