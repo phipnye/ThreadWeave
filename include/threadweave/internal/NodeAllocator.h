@@ -72,7 +72,11 @@ class NodeAllocator {
 
     // Flushes global retirement list, recycles safe nodes, and packages them
     // into blocks
-    bool recycleGlobalRetirementList();
+    Node* recycleGlobalRetirementList();
+
+    // Detaches up to NodesPerBlock nodes from the front of nodeList and
+    // returns the block head, or nullptr if nodeList was already empty
+    static Node* takeBlock(Node*& nodeList) noexcept;
   };
 
   class LocalNodePool {
@@ -237,10 +241,8 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodePool::acquireFreeBlock() {
   }
 
   // Otherwise, try to recycle and then try again
-  if (recycleGlobalRetirementList()) {
-    if (Node* const block{popFreeBlock()}) {
-      return block;
-    }
+  if (Node* const block{recycleGlobalRetirementList()}) {
+    return block;
   }
 
   // Fallback to OS allocation if nothing remains available
@@ -333,12 +335,12 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodePool::popFreeBlock() {
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
-bool NodeAllocator<
+Node* NodeAllocator<
     Node, NodesPerBlock>::GlobalNodePool::recycleGlobalRetirementList() {
   Node* const retired{retireList_.exchange(nullptr, MemoryOrder::acquire)};
 
   if (!retired) {
-    return false;
+    return nullptr;
   }
 
   Node* holdFree{nullptr};    // nodes that can be moved to free list
@@ -349,28 +351,36 @@ bool NodeAllocator<
   tryRecycle(retired, holdFree, holdRetire, local.hazardSnapshot_);
   pushRetireBatch(holdRetire);
 
-  if (!holdFree) {
-    return false;
-  }
+  // Hand the first recycled block straight back instead of pushing it to the
+  // free list only to have the caller immediately CAS it back off
+  Node* const firstBlock{takeBlock(holdFree)};
 
-  // Package unpinned nodes into discrete block of size <= NodesPerBlock
-  while (holdFree) {
-    Node* const block{holdFree};
-    Node* curr{holdFree};
-    Index cnt{1};
-
-    while (curr->_internal.nextFree && cnt < NodesPerBlock) {
-      curr = curr->_internal.nextFree;
-      ++cnt;
-    }
-
-    holdFree = curr->_internal.nextFree;
-    curr->_internal.nextFree = nullptr;
+  while (Node* const block{takeBlock(holdFree)}) {
     pushFreeBlock(block);
   }
 
-  // TODO: Instead of returning bool, just return a block directly
-  return true;
+  return firstBlock;
+}
+
+template <AllocatorEligibleNode Node, Index NodesPerBlock>
+Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodePool::takeBlock(
+    Node*& nodeList) noexcept {
+  if (!nodeList) {
+    return nullptr;
+  }
+
+  Node* const block{nodeList};
+  Node* curr{nodeList};
+  Index cnt{1};
+
+  while (curr->_internal.nextFree && cnt < NodesPerBlock) {
+    curr = curr->_internal.nextFree;
+    ++cnt;
+  }
+
+  nodeList = curr->_internal.nextFree;
+  curr->_internal.nextFree = nullptr;
+  return block;
 }
 
 template <AllocatorEligibleNode Node, Index NodesPerBlock>
