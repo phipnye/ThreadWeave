@@ -37,7 +37,7 @@ class NodeAllocator {
    public:
 #ifndef TW_NDEBUG
     // Keep track of the number of allocations to make sure there are no leaks
-    // (NOTE: This member must be initialized BEFORE freeHead_ gets initialized
+    // (NOTE: This member must be initialized before freeHead_ gets initialized
     // with allocateBlock() which modifies this value)
     alignas(kCacheLineSize) mutable std::atomic<Index> nAllocs_{0};
 #endif
@@ -270,10 +270,10 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
         break;
       }
 
-      // Try popping the head of the free list (note this is safe from ABA)
+      // Try popping the head of the free list (note this is safe from ABA
       // because other threads that may have already popped and tried to
       // deallocate this node will have pushed it back to saveHead and thus fail
-      // this CAS (profiling demonstrated better performance with strong CAS)
+      // this CAS) (profiling demonstrated better performance with strong CAS)
       if (freeHead_.compare_exchange_strong(freeNode, freeNode->_internal.next,
                                             MemoryOrder::acquire,
                                             MemoryOrder::relaxed)) {
@@ -284,14 +284,13 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
 
   // If we successfully detached a free node from the freelist
   if (freeNode) {
-    freeNode->_internal.next = nullptr;
     return freeNode;
   }
 
   // Try recycling nodes from the save list
   if (Node* const saved{saveHead_.exchange(nullptr, MemoryOrder::acquire)}) {
-    Node* holdFree{nullptr};  // Nodes that can be moved to free list
-    Node* holdSave{nullptr};  // Nodes that remain in 'saved' state
+    Node* holdFree{nullptr};  // nodes that can be moved to free list
+    Node* holdSave{nullptr};  // nodes that remain in 'saved' state
 
     // Steal the calling thread's local cache snapshot to try to recycle nodes
     ThreadNodeCache& local{getThreadCaches()};
@@ -313,7 +312,6 @@ Node* NodeAllocator<Node, NodesPerBlock>::GlobalNodeCaches::askForNode() {
       // Push the rest of the nodes back to the free list
       if (freeBlockTail) {
         pushFree(freeBlockTail->_internal.next);
-        freeBlockTail->_internal.next = nullptr;
       }
 
       return freeBlockHead;
@@ -386,11 +384,11 @@ template <AllocatorEligibleNode Node, Index NodesPerBlock>
 Node* NodeAllocator<Node, NodesPerBlock>::ThreadNodeCache::askGlobalForNode() {
   Node* const granted{globalCache_->askForNode()};
   TW_ASSERT(granted != nullptr, "Received a null allocation from global cache");
-  Node* const rest{granted->_internal.next};
-  granted->_internal.next = nullptr;
+
+  // Safe to overwrite: only called when empty
   TW_ASSERT(freeHead_ == nullptr,
             "askForGlobal called when free list is non-empty");
-  freeHead_ = rest;  // safe (this is only ever called when free list is empty)
+  freeHead_ = granted->_internal.next;
   return granted;
 }
 
@@ -428,8 +426,6 @@ Node* NodeAllocator<Node, NodesPerBlock>::allocate() {
   }
 
   TW_ASSERT(node != nullptr, "allocate() returning a nullptr");
-  TW_ASSERT(node->_internal.next == nullptr,
-            "allocated node still attached to list");
   return node;
 }
 
@@ -441,8 +437,6 @@ void NodeAllocator<Node, NodesPerBlock>::deallocate(Node* const node) noexcept {
 
   // Push deallocated node to save list
   ThreadNodeCache& local{getThreadCaches()};
-  TW_ASSERT(node->_internal.next == nullptr,
-            "deallocate() received an internally linked node");
   node->_internal.next = local.saveHead_;
   local.saveHead_ = node;
 

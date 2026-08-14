@@ -9,7 +9,6 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <type_traits>
 #include <vector>
 
 // TODO: Some tests won't pass right now since recycling does not happen
