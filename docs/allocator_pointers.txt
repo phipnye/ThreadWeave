@@ -1,0 +1,26 @@
+Global free list (GlobalNodePool::freeList_), chained by nextBlock:
+
+  freeList_ -> [block 1] -> [block 2] -> [block 3] -> null
+                  |
+                  | each block start also chains NodesPerBlock-1 more
+                  | nodes internally via nextFree:
+                  v
+               [node] -> [node] -> ... -> [node] -> null
+                                            (NodesPerBlock nodes total)
+
+  popFreeBlock() CASes freeList_ off the block start, which pulls the
+  whole nextFree chain along with it in one shot - no need to touch the
+  individual nodes.
+
+Thread-local free list (LocalNodePool::freeList_), also via nextFree:
+
+  freeList_ -> [A] -> [B] -> [C] -> null
+
+  No atomics here, single thread only, so plain pointer walk.
+
+Retirement list (retireList_ on both local and global pools), via nextRetire:
+
+  retireList_ -> [node] -> [node] -> [node] -> null
+
+  Local retireList_ is a plain Node*; the global one is atomic since
+  multiple threads push batches to it concurrently (pushRetireBatch).

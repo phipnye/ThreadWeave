@@ -19,8 +19,10 @@ namespace ThreadWeave::Internal {
  */
 template <typename Node>
 struct AllocatorInfo {
-  Node* next{nullptr};
-  bool isBlockStart{false};
+  Node* nextFree{nullptr};    // Thread-local free list & intra-block chaining
+  Node* nextRetire{nullptr};  // Thread-local & global pending retirement list
+  Node* nextBlock{nullptr};   // Global block pointer (used only on block heads)
+  bool isBlockStart{false};   // OS block allocation tracking
 };
 
 /**

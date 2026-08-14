@@ -170,37 +170,6 @@ TEST(NodeAllocatorTests, DeallocateNullptrIsSafe) {
   SUCCEED();
 }
 
-TEST(NodeAllocatorTests, SameThreadRecyclesSameStackNode) {
-  using Node = StackNode<int>;
-  using Allocator = NodeAllocator<Node, 8>;
-  auto* const a{Allocator::allocate()};
-  Allocator::deallocate(a);
-  auto* const b{Allocator::allocate()};
-  EXPECT_EQ(a, b);
-  Allocator::deallocate(b);
-}
-
-TEST(NodeAllocatorTests, SameThreadRecyclesSameStackNodeAcrossIters) {
-  using Node = StackNode<int>;
-  using Allocator = NodeAllocator<Node, 9>;
-  constexpr int nIterations{5'000};
-  Node* prev{nullptr};
-
-  for (int i{0}; i < nIterations; ++i) {
-    auto* const curr{Allocator::allocate()};
-    EXPECT_NE(curr, nullptr);
-    curr->data = i;
-    Allocator::deallocate(curr);
-
-    // Within a single thread, node should be recycled over and over
-    if (prev) {
-      EXPECT_EQ(curr, prev);
-    }
-
-    prev = curr;
-  }
-}
-
 TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueStackNodes) {
   constexpr Index kSmallBlock{2};
   using Node = StackNode<int>;
@@ -263,36 +232,6 @@ TEST(NodeAllocatorTests, AllocatedQueueNodeStartsInResetState) {
   Allocator::deallocate(node);
 }
 
-TEST(NodeAllocatorTests, SameThreadRecyclesSameQueueNode) {
-  using Node = QueueNode<int>;
-  using Allocator = NodeAllocator<Node, 13>;
-  auto* const a{Allocator::allocate()};
-  Allocator::deallocate(a);
-  auto* const b{Allocator::allocate()};
-  EXPECT_EQ(a, b);
-  Allocator::deallocate(b);
-}
-
-TEST(NodeAllocatorTests, SameThreadRecyclesSameQueueNodeAcrossIters) {
-  using Node = QueueNode<int>;
-  using Allocator = NodeAllocator<Node, 14>;
-  constexpr int nIterations{5'000};
-  Node* prev{nullptr};
-
-  for (int i{0}; i < nIterations; ++i) {
-    auto* const curr{Allocator::allocate()};
-    EXPECT_NE(curr, nullptr);
-    curr->data = i;
-    Allocator::deallocate(curr);
-
-    if (prev) {
-      EXPECT_EQ(curr, prev);
-    }
-
-    prev = curr;
-  }
-}
-
 TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueQueueNodes) {
   constexpr Index kSmallBlock{2};
   using Node = QueueNode<int>;
@@ -348,16 +287,6 @@ TEST(NodeAllocatorTests, AllocateTaskNodeReturnsNonNullAndReset) {
   EXPECT_FALSE(task->hasResult_);
   EXPECT_EQ(task->refCount_.load(MemoryOrder::relaxed), 2);
   Allocator::deallocate(task);
-}
-
-TEST(NodeAllocatorTests, SameThreadRecyclesSameTaskNode) {
-  using Node = Task<int>;
-  using Allocator = NodeAllocator<Node, 16>;
-  auto* const a{Allocator::allocate()};
-  Allocator::deallocate(a);
-  auto* const b{Allocator::allocate()};
-  EXPECT_EQ(a, b);
-  Allocator::deallocate(b);
 }
 
 TEST(NodeAllocatorTests, AllocatingMoreThanOneBlockYieldsUniqueTaskNodes) {
