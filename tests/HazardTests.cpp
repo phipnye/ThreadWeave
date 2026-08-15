@@ -47,12 +47,12 @@ TEST(HazardTests, GetPointerRoundTripsStoredValue) {
 
 TEST(HazardTests, IsPointerInUseReturnsFalseForNullptr) {
   // Safe on the main thread (purely a read of the slots pool)
-  EXPECT_FALSE(Internal::anyThreadsUsingNode(nullptr));
+  EXPECT_FALSE(Internal::anyThreadsUsingPtr(nullptr));
 }
 
 TEST(HazardTests, IsPointerInUseReturnsFalseWhenNoThreadHoldsIt) {
   constexpr int dummy{42};
-  EXPECT_FALSE(Internal::anyThreadsUsingNode(&dummy));
+  EXPECT_FALSE(Internal::anyThreadsUsingPtr(&dummy));
 }
 
 TEST(HazardTests, IsPointerInUseReturnsTrueWhileCurrentThreadHoldsIt) {
@@ -60,11 +60,11 @@ TEST(HazardTests, IsPointerInUseReturnsTrueWhileCurrentThreadHoldsIt) {
     int dummy{42};
     auto& hp{Internal::getThreadHazardPointer(
         static_cast<Index>(HazardSlot::Alloc2))};
-    EXPECT_FALSE(Internal::anyThreadsUsingNode(&dummy));
+    EXPECT_FALSE(Internal::anyThreadsUsingPtr(&dummy));
     hp.store(&dummy, MemoryOrder::release);
-    EXPECT_TRUE(Internal::anyThreadsUsingNode(&dummy));
+    EXPECT_TRUE(Internal::anyThreadsUsingPtr(&dummy));
     hp.store(nullptr, MemoryOrder::release);
-    EXPECT_FALSE(Internal::anyThreadsUsingNode(&dummy));
+    EXPECT_FALSE(Internal::anyThreadsUsingPtr(&dummy));
   });
 }
 
@@ -74,7 +74,7 @@ TEST(HazardTests, CrossThreadVisibilityOfHazardPointer) {
   std::atomic<bool> acquired{false};
   std::atomic<bool> canRelease{false};
 
-  EXPECT_FALSE(Internal::anyThreadsUsingNode(&x));
+  EXPECT_FALSE(Internal::anyThreadsUsingPtr(&x));
 
   std::jthread holder([&] {
     const HazardGuard<HazardSlot::Alloc2> guard{};
@@ -89,26 +89,26 @@ TEST(HazardTests, CrossThreadVisibilityOfHazardPointer) {
   while (!acquired.load(MemoryOrder::acquire)) {
     std::this_thread::yield();
   }
-  EXPECT_TRUE(Internal::anyThreadsUsingNode(&x));
+  EXPECT_TRUE(Internal::anyThreadsUsingPtr(&x));
   canRelease.store(true, MemoryOrder::release);
   holder.join();  // thread local manager destructs here, releasing the slot
-  EXPECT_FALSE(Internal::anyThreadsUsingNode(&x));
+  EXPECT_FALSE(Internal::anyThreadsUsingPtr(&x));
 }
 
 TEST(HazardTests, HazardGuardAcquiresMatchesAtomicAndClearsOnDestruction) {
   std::jthread worker([] {
     int dummy{42};
     std::atomic<int*> src{&dummy};
-    EXPECT_FALSE(Internal::anyThreadsUsingNode(&dummy));
+    EXPECT_FALSE(Internal::anyThreadsUsingPtr(&dummy));
 
     {
       HazardGuard<HazardSlot::Alloc2> guard{};
       int* const acquired{guard.acquirePointerWithHazard(src)};
       EXPECT_EQ(acquired, &dummy);
-      EXPECT_TRUE(Internal::anyThreadsUsingNode(&dummy));
+      EXPECT_TRUE(Internal::anyThreadsUsingPtr(&dummy));
     }
 
-    EXPECT_FALSE(Internal::anyThreadsUsingNode(&dummy));
+    EXPECT_FALSE(Internal::anyThreadsUsingPtr(&dummy));
   });
 }
 
@@ -122,8 +122,8 @@ TEST(HazardTests, MultipleHazardSlotsAreIndependentOnSameThread) {
     const HazardGuard<HazardSlot::Queue1> guard1{};
     EXPECT_EQ(guard0.acquirePointerWithHazard(srcX), &x);
     EXPECT_EQ(guard1.acquirePointerWithHazard(srcY), &y);
-    EXPECT_TRUE(Internal::anyThreadsUsingNode(&x));
-    EXPECT_TRUE(Internal::anyThreadsUsingNode(&y));
+    EXPECT_TRUE(Internal::anyThreadsUsingPtr(&x));
+    EXPECT_TRUE(Internal::anyThreadsUsingPtr(&y));
   });
 }
 
@@ -138,11 +138,11 @@ TEST(HazardTests, Stack0AndQueue0ShareTheSameUnderlyingSlot) {
     std::atomic<int*> srcB{&b};
     const HazardGuard<HazardSlot::Stack0> stackGuard{};
     EXPECT_EQ(stackGuard.acquirePointerWithHazard(srcA), &a);
-    EXPECT_TRUE(Internal::anyThreadsUsingNode(&a));
+    EXPECT_TRUE(Internal::anyThreadsUsingPtr(&a));
     const HazardGuard<HazardSlot::Queue0> queueGuard{};
     EXPECT_EQ(queueGuard.acquirePointerWithHazard(srcB), &b);
-    EXPECT_FALSE(Internal::anyThreadsUsingNode(&a));
-    EXPECT_TRUE(Internal::anyThreadsUsingNode(&b));
+    EXPECT_FALSE(Internal::anyThreadsUsingPtr(&a));
+    EXPECT_TRUE(Internal::anyThreadsUsingPtr(&b));
   });
 }
 

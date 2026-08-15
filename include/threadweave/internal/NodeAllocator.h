@@ -19,7 +19,7 @@ namespace ThreadWeave::Internal {
  * @tparam NodesPerBlock number of nodes to allocate at a time (larger values
  * result in fewer heap allocations but could be more wasteful of memory)
  */
-template <AllocatorEligibleNode Node, Index NodesPerBlock = 32>
+template <AllocatorEligibleNode Node, Index NodesPerBlock = 16>
 class NodeAllocator {
   // Terminology note:
   // - Block refers to a chain of NodesPerBlock (except that a block returned to
@@ -359,6 +359,7 @@ Node* NodeAllocator<
     pushFreeBlock(block);
   }
 
+  // ReSharper disable once CppDFALocalValueEscapesFunction
   return firstBlock;
 }
 

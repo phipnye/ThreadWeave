@@ -5,7 +5,7 @@
 // underlying implementation tries to minimize this contention by recycling
 // nodes as much as possible and allocating in blocks. Ideally, this profiling
 // should show malloc taking minimal time while the runtime is dominated by
-// other tasks like thread spawning.
+// other tasks like thread spawning and stack operations.
 
 #include <threadweave/TreiberStack.h>
 

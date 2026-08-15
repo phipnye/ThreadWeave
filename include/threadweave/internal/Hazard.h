@@ -31,16 +31,19 @@ class ThreadHazardManager {
     std::atomic<void*> hps[static_cast<Index>(HazardSlot::COUNT)];
 
     // Range-based loop support
-    auto begin() noexcept(noexcept(std::begin(hps))) {
+    constexpr auto begin() noexcept(noexcept(std::begin(hps))) {
       return std::begin(hps);
     }
-    auto end() noexcept(noexcept(std::end(hps))) {
+
+    constexpr auto end() noexcept(noexcept(std::end(hps))) {
       return std::end(hps);
     }
-    auto cbegin() const noexcept(noexcept(std::cbegin(hps))) {
+
+    constexpr auto cbegin() const noexcept(noexcept(std::cbegin(hps))) {
       return std::cbegin(hps);
     }
-    auto cend() const noexcept(noexcept(std::cend(hps))) {
+
+    constexpr auto cend() const noexcept(noexcept(std::cend(hps))) {
       return std::cend(hps);
     }
   };
@@ -86,11 +89,11 @@ class ThreadHazardManager {
   std::atomic<void*>& getPointer(Index idx) noexcept;
 
   /**
-   * Check if any threads are using node
-   * @param nodePtr pointer to the node we want to check
-   * @return true if nodePtr is used by any thread and false otherwise
+   * Check if any threads are using a given pointer
+   * @param ptr pointer we want to check if being used
+   * @return true if ptr is used by any thread and false otherwise
    */
-  static bool isPointerInUse(const void* nodePtr) noexcept;
+  static bool isPointerInUse(const void* ptr) noexcept;
 
   /**
    * Store a snapshot of the pointers actively in use
@@ -126,14 +129,13 @@ inline ThreadHazardManager::~ThreadHazardManager() {
   // this thread slot
   TW_ASSERT(poolIdx_ >= 0 && poolIdx_ < kMaxThreads,
             "Attempting to destroy uninitialized manager slot");
-  auto& hps{hpsPool[poolIdx_]};
 
-  for (auto& hp : hps) {
+  for (auto& hp : hpsPool[poolIdx_]) {
     hp.store(nullptr, MemoryOrder::relaxed);
   }
 
 #ifndef TW_NDEBUG
-  for (const auto& hp : hps) {
+  for (const auto& hp : hpsPool[poolIdx_]) {
     TW_ASSERT(hp.load(MemoryOrder::relaxed) == nullptr,
               "Hazard pointer failed to clear during slot release");
   }
@@ -152,17 +154,17 @@ inline std::atomic<void*>& ThreadHazardManager::getPointer(
 }
 
 inline bool ThreadHazardManager::isPointerInUse(
-    const void* const nodePtr) noexcept {
-  if (!nodePtr) [[unlikely]] {
+    const void* const ptr) noexcept {
+  if (!ptr) [[unlikely]] {
     return false;
   }
 
   // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard.
-  // Without this, the removal that makes nodePtr eligible for recycling
-  // (e.g. the CAS or exchange that unlinks it) and this scan are only ordered
-  // by acquire/release, which permits an interleaving where a thread's
-  // hazard-slot publish is invisible and thus both threads see stale memory
-  // causing an ABA issue
+  // Without this, the removal that makes ptr eligible for recycling (e.g. the
+  // CAS or exchange that unlinks it) and this scan are only ordered by
+  // acquire/release, which permits an interleaving where a thread's hazard-slot
+  // publish is invisible and thus both threads see stale memory causing an ABA
+  // issue
   std::atomic_thread_fence(MemoryOrder::seq_cst);
 
   for (Index i{0}; i < kMaxThreads; ++i) {
@@ -173,7 +175,7 @@ inline bool ThreadHazardManager::isPointerInUse(
 
     // Otherwise, check if any pointers point to same memory location
     for (const auto& hp : hpsPool[i]) {
-      if (hp.load(MemoryOrder::acquire) == nodePtr) {
+      if (hp.load(MemoryOrder::acquire) == ptr) {
         return true;
       }
     }
@@ -184,12 +186,7 @@ inline bool ThreadHazardManager::isPointerInUse(
 
 inline void ThreadHazardManager::getActivePointers(
     std::vector<const void*>& snapshot) noexcept {
-  // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard.
-  // Without this, the removal that makes nodePtr eligible for recycling
-  // (e.g. the CAS or exchange that unlinks it) and this scan are only ordered
-  // by acquire/release, which permits an interleaving where a thread's
-  // hazard-slot publish is invisible and thus both threads see stale memory
-  // causing an ABA issue
+  // Pairs with the seq_cst fence in HazardGuard::acquirePointerWithHazard
   std::atomic_thread_fence(MemoryOrder::seq_cst);
 
   for (Index i{0}; i < kMaxThreads; ++i) {
@@ -218,12 +215,12 @@ inline std::atomic<void*>& getThreadHazardPointer(const Index idx) {
 }
 
 /**
- * Check if any threads are using node
- * @param nodePtr pointer to the node we want to check
- * @return true if nodePtr is used by any thread and false otherwise
+ * Check if any threads are using a pointer
+ * @param ptr pointer to the object we want to check
+ * @return true if ptr is used by any thread and false otherwise
  */
-inline bool anyThreadsUsingNode(const void* nodePtr) noexcept {
-  return ThreadHazardManager::isPointerInUse(nodePtr);
+inline bool anyThreadsUsingPtr(const void* const ptr) noexcept {
+  return ThreadHazardManager::isPointerInUse(ptr);
 }
 
 /**

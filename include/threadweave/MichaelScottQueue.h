@@ -92,7 +92,7 @@ MichaelScottQueue<T>::~MichaelScottQueue() {
             "Head pointer was null during MichaelScottQueue destruction");
 
   // Verify no active hazard pointers exist for the head node during destruction
-  TW_ASSERT(!Internal::anyThreadsUsingNode(head),
+  TW_ASSERT(!Internal::anyThreadsUsingPtr(head),
             "MichaelScottQueue destroyed while threads still hold hazard "
             "pointers to its nodes!");
 

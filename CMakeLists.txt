@@ -1,28 +1,14 @@
 cmake_minimum_required(VERSION 3.23)
 project(ThreadWeave VERSION 1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# --- Compiler flags
-set(COMPILER_FLAGS
-        -Wall
-        -Wextra
-        -Wshadow
-        -Weffc++
-        -Wconversion
-        -pedantic-errors
-        -Werror
-        -Wno-error=sign-conversion
-        -Wno-interference-size
-        -fconcepts-diagnostics-depth=2
-)
-
-# --- ThreadWeave library
+# --- Main target definition
 add_library(ThreadWeave INTERFACE)
+add_library(ThreadWeave::ThreadWeave ALIAS ThreadWeave)
 
+# Set required language features without forcing global standards on downstream consumers
+target_compile_features(ThreadWeave INTERFACE cxx_std_23)
+
+# Headers layout
 target_sources(ThreadWeave
         INTERFACE
         FILE_SET HEADERS
@@ -41,10 +27,6 @@ target_sources(ThreadWeave
         include/threadweave/internal/utils.h
 )
 
-#target_compile_options(ThreadWeave INTERFACE ${COMPILER_FLAGS})
-
-# --- Macros
-
 # Remove debug symbol in release mode
 target_compile_definitions(ThreadWeave INTERFACE $<$<CONFIG:Release>:TW_NDEBUG>)
 
@@ -60,29 +42,52 @@ target_compile_definitions(ThreadWeave INTERFACE TW_CACHE_LINE_SIZE=64)
 # Set the maximum number of threads an application can expect to use for managing hazard pointer resource
 # target_compile_definitions(ThreadWeave INTERFACE TW_MAX_THREADS=64)
 
-# --- Third-party dependencies
-
+# External dependency propagation
 find_package(Threads REQUIRED)
 target_link_libraries(ThreadWeave INTERFACE Threads::Threads)
 
-include(FetchContent)
-set(BENCHMARK_ENABLE_TESTING OFF)
-set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
-FetchContent_Declare(
-        googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG v1.9.5
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(googlebenchmark googletest)
+# --- Top-Level project configurations (tests, examples, benchmarks)
+if (PROJECT_IS_TOP_LEVEL)
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# --- Subdirectories
-add_subdirectory(examples)
-add_subdirectory(benchmark)
-add_subdirectory(tests)
-add_subdirectory(profile)
+    # Compiler warning flags applied strictly to testing/examples
+    set(COMPILER_FLAGS
+            -Wall
+            -Wextra
+            -Wshadow
+            -Weffc++
+            -Wconversion
+            -pedantic-errors
+            -Werror
+            -Wno-error=sign-conversion
+            -Wno-interference-size
+            -fconcepts-diagnostics-depth=2
+    )
+
+    # Subdirectories
+    add_subdirectory(benchmark)
+    add_subdirectory(examples)
+    add_subdirectory(profile)
+    add_subdirectory(tests)
+
+    # Dependencies
+    include(FetchContent)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            googlebenchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG v1.9.5
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(googlebenchmark)
+    FetchContent_Declare(
+            googletest
+            URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+endif ()
