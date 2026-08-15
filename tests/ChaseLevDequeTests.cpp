@@ -141,7 +141,7 @@ TEST(ChaseLevDequeTests, NoUnnecessaryExpansions) {
   constexpr int nThieves{2};
   constexpr int nItems{16};  // initial capacity
   std::atomic<bool> stop{false};
-  std::vector<std::jthread> thieves;
+  std::vector<std::jthread> thieves{};
 
   for (int i{0}; i < nThieves; ++i) {
     thieves.emplace_back([&] {

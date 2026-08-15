@@ -12,13 +12,13 @@ across many worker threads.
   other workers when idle. Tasks submitted from non-worker threads go through a global MPSC injection queue.
 - **`Future<T>`** — a lightweight future returned from `ThreadPool::submit`, supporting result retrieval and exception
   propagation.
+- **`Hazard`** — hazard pointer infrastructure for safe lock-free memory reclamation.
+- **`NodeAllocator`** — per-thread pooled allocator for node-based structures.
 - Lock-free building blocks, usable independently of the thread pool:
     - **`ChaseLevDeque<T>`** — single-producer, multi-consumer work-stealing deque.
     - **`TreiberStack<T>`** — classic lock-free stack, using hazard pointers for safe memory reclamation.
     - **`MichaelScottQueue<T>`** — lock-free MPMC queue, also hazard-pointer protected.
     - **`VyukovQueue<T>`** — intrusive MPSC queue used internally for task injection.
-    - **`Hazard`** — hazard pointer infrastructure for safe lock-free memory reclamation.
-    - **`NodeAllocator`** — per-thread pooled allocator for node-based structures.
 
 ## Requirements
 
@@ -73,6 +73,22 @@ cd benchmark
 Benchmark executables are built with Google Benchmark and result jsons are output to `benchmark/analysis/jsons`. If the
 user has `R` installed, this bash script will run the scripts in `benchmark/analysis/scripts` and produce benchmarking
 result plots in `benchmark/analysis/plots`.
+
+## How to Incorporate Into a Project with cmake
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    ThreadWeave
+    GIT_REPOSITORY https://github.com/phipnye/ThreadWeave.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(ThreadWeave)
+
+# Link your library
+add_executable(your_target main.cpp)
+target_link_libraries(your_target PRIVATE ThreadWeave::ThreadWeave)
+```
 
 ## Usage
 
