@@ -1,12 +1,12 @@
 #ifndef TW_HAZARD_H
 #define TW_HAZARD_H
 
-#include <threadweave/internal/utils.h>
-
 #include <atomic>
 #include <stdexcept>
 #include <thread>
 #include <vector>
+
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave::Internal {
 

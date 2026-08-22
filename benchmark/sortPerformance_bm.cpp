@@ -1,6 +1,5 @@
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
-#include <threadweave/ThreadPool.h>
 
 #include <algorithm>
 #include <execution>
@@ -8,6 +7,7 @@
 #include <iterator>
 
 #include "helpers.h"
+#include "threadweave/ThreadPool.h"
 
 using ThreadWeave::ThreadPool;
 

@@ -1,8 +1,6 @@
 #ifndef TW_CHASE_LEV_DEQUE_H
 #define TW_CHASE_LEV_DEQUE_H
 
-#include <threadweave/internal/utils.h>
-
 #include <algorithm>
 #include <atomic>
 #include <iostream>
@@ -13,6 +11,8 @@
 #include <thread>
 #include <type_traits>
 #include <vector>
+
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave {
 

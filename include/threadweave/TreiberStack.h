@@ -1,15 +1,15 @@
 #ifndef TW_TREIBER_STACK_H
 #define TW_TREIBER_STACK_H
 
-#include <threadweave/internal/Hazard.h>
-#include <threadweave/internal/Node.h>
-#include <threadweave/internal/NodeAllocator.h>
-#include <threadweave/internal/utils.h>
-
 #include <atomic>
 #include <optional>
 #include <type_traits>
 #include <utility>
+
+#include "threadweave/internal/Hazard.h"
+#include "threadweave/internal/Node.h"
+#include "threadweave/internal/NodeAllocator.h"
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave {
 

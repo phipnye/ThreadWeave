@@ -1,6 +1,4 @@
 #include <gtest/gtest.h>
-#include <threadweave/ChaseLevDeque.h>
-#include <threadweave/internal/utils.h>
 
 #include <algorithm>
 #include <atomic>
@@ -10,6 +8,9 @@
 #include <random>
 #include <thread>
 #include <vector>
+
+#include "threadweave/ChaseLevDeque.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 

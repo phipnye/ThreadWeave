@@ -85,7 +85,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ThreadWeave)
 
-# Link your library
+# Link into your target
 add_executable(your_target main.cpp)
 target_link_libraries(your_target PRIVATE ThreadWeave::ThreadWeave)
 ```

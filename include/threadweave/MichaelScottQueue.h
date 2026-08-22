@@ -1,16 +1,16 @@
 #ifndef TW_MICHAEL_SCOTT_QUEUE_H
 #define TW_MICHAEL_SCOTT_QUEUE_H
 
-#include <threadweave/internal/Hazard.h>
-#include <threadweave/internal/Node.h>
-#include <threadweave/internal/NodeAllocator.h>
-#include <threadweave/internal/utils.h>
-
 #include <atomic>
 #include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
+
+#include "threadweave/internal/Hazard.h"
+#include "threadweave/internal/Node.h"
+#include "threadweave/internal/NodeAllocator.h"
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave {
 

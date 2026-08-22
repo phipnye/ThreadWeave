@@ -1,19 +1,13 @@
 #ifndef TW_THREAD_POOL_H
 #define TW_THREAD_POOL_H
 
-#include <threadweave/ChaseLevDeque.h>
-#include <threadweave/VyukovQueue.h>
-#include <threadweave/internal/Future.h>
-#include <threadweave/internal/NodeAllocator.h>
-#include <threadweave/internal/Task.h>
-#include <threadweave/internal/utils.h>
-
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <new>
 #include <random>
@@ -22,6 +16,14 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+#include "threadweave/ChaseLevDeque.h"
+#include "threadweave/VyukovQueue.h"
+#include "threadweave/internal/BlockedRange.h"
+#include "threadweave/internal/Future.h"
+#include "threadweave/internal/NodeAllocator.h"
+#include "threadweave/internal/Task.h"
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave {
 
@@ -104,9 +106,25 @@ class ThreadPool {
    * @return A future instance with the result returned by f(args) or an
    * exception if one was thrown
    */
-  template <class F, class... Args>
+  template <typename F, typename... Args>
   auto submit(F&& f, Args&&... args)
       -> Future<std::invoke_result_t<F, Args...>>;
+
+  template <typename Iter, typename Comp>
+  void sort(Iter begin, Iter end,
+            const Comp& comp =
+                std::less<typename std::iterator_traits<Iter>::value_type>{}) {
+    constexpr Index kSeqCutoff{500};
+    Internal::BlockedRange range{begin, end, kSeqCutoff};
+
+    // Base case: fewer than cutoff elements, fallback to std::sort
+    if (!range.isDivisible()) {
+      std::sort(begin, end, comp);
+      return;
+    }
+
+
+  }
 
  private:
   /**
@@ -166,6 +184,7 @@ class ThreadPool {
   void decrementNumQueued(std::memory_order order) noexcept;
 
  public:
+  // TODO: Shouldn't be public
   /**
    * Helper function for a thread to wait on a task result to be ready. If the
    * caller is a worker thread in a thread pool, it continues executing work

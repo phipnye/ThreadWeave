@@ -4,7 +4,6 @@
  */
 
 #include <benchmark/benchmark.h>
-#include <threadweave/ThreadPool.h>
 
 #include <cstddef>
 #include <future>
@@ -12,6 +11,7 @@
 
 #include "BS_thread_pool.hpp"
 #include "helpers.h"
+#include "threadweave/ThreadPool.h"
 
 // --- Global parameters
 

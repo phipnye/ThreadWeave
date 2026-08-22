@@ -7,11 +7,11 @@
 // should show malloc taking minimal time while the runtime is dominated by
 // other tasks like thread spawning and stack operations.
 
-#include <threadweave/TreiberStack.h>
-
 #include <barrier>
 #include <thread>
 #include <vector>
+
+#include "threadweave/TreiberStack.h"
 
 namespace {
 

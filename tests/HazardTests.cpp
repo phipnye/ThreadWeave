@@ -1,14 +1,15 @@
 #include <gtest/gtest.h>
-#include <threadweave/internal/Hazard.h>
-#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <vector>
 #include <type_traits>
+#include <vector>
+
+#include "threadweave/internal/Hazard.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 using Internal::HazardGuard;

@@ -1,14 +1,15 @@
 #ifndef TW_BM_HELPERS_H
 #define TW_BM_HELPERS_H
 #include <benchmark/benchmark.h>
-#include <threadweave/ThreadPool.h>
-#include <threadweave/internal/utils.h>
 
 #include <algorithm>
 #include <functional>
 #include <iterator>
 #include <limits>
 #include <random>
+
+#include "threadweave/ThreadPool.h"
+#include "threadweave/internal/utils.h"
 
 using ThreadWeave::Index;
 

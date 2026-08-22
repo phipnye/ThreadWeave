@@ -1,6 +1,4 @@
 #include <gtest/gtest.h>
-#include <threadweave/internal/Task.h>
-#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <chrono>
@@ -10,6 +8,9 @@
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
+
+#include "threadweave/internal/Task.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 

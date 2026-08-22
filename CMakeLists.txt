@@ -19,6 +19,7 @@ target_sources(ThreadWeave
         include/threadweave/ThreadPool.h
         include/threadweave/TreiberStack.h
         include/threadweave/VyukovQueue.h
+        include/threadweave/internal/BlockedRange.h
         include/threadweave/internal/Future.h
         include/threadweave/internal/Hazard.h
         include/threadweave/internal/NodeAllocator.h

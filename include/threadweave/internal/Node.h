@@ -1,13 +1,13 @@
 #ifndef TW_NODE_H
 #define TW_NODE_H
 
-#include <threadweave/internal/utils.h>
-
 #include <atomic>
 #include <concepts>
 #include <memory>
 #include <new>
 #include <type_traits>
+
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave::Internal {
 

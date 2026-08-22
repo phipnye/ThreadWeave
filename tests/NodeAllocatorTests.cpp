@@ -1,8 +1,4 @@
 #include <gtest/gtest.h>
-#include <threadweave/internal/Node.h>
-#include <threadweave/internal/NodeAllocator.h>
-#include <threadweave/internal/Task.h>
-#include <threadweave/internal/utils.h>
 
 #include <algorithm>
 #include <atomic>
@@ -10,6 +6,11 @@
 #include <queue>
 #include <thread>
 #include <vector>
+
+#include "threadweave/internal/Node.h"
+#include "threadweave/internal/NodeAllocator.h"
+#include "threadweave/internal/Task.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 using Internal::NodeAllocator;

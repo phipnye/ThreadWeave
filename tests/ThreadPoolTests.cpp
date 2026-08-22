@@ -1,7 +1,4 @@
 #include <gtest/gtest.h>
-#include <threadweave/ThreadPool.h>
-#include <threadweave/internal/Future.h>
-#include <threadweave/internal/utils.h>
 
 #include <bitset>
 #include <chrono>
@@ -10,6 +7,10 @@
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
+
+#include "threadweave/ThreadPool.h"
+#include "threadweave/internal/Future.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 

@@ -1,13 +1,13 @@
 #ifndef TW_TASK_H
 #define TW_TASK_H
 
-#include <threadweave/internal/Node.h>
-#include <threadweave/internal/utils.h>
-
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+
+#include "threadweave/internal/Node.h"
+#include "threadweave/internal/utils.h"
 
 namespace ThreadWeave::Internal {
 

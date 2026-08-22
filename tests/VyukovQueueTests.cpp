@@ -1,6 +1,4 @@
 #include <gtest/gtest.h>
-#include <threadweave/VyukovQueue.h>
-#include <threadweave/internal/utils.h>
 
 #include <atomic>
 #include <bitset>
@@ -9,6 +7,9 @@
 #include <random>
 #include <thread>
 #include <vector>
+
+#include "threadweave/VyukovQueue.h"
+#include "threadweave/internal/utils.h"
 
 using namespace ThreadWeave;
 

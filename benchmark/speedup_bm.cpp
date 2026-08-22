@@ -4,11 +4,11 @@
  */
 
 #include <benchmark/benchmark.h>
-#include <threadweave/ThreadPool.h>
 
 #include <vector>
 
 #include "helpers.h"
+#include "threadweave/ThreadPool.h"
 
 // --- Global parameters
 
