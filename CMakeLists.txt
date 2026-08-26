@@ -25,6 +25,7 @@ target_sources(ThreadWeave
         include/threadweave/internal/NodeAllocator.h
         include/threadweave/internal/Node.h
         include/threadweave/internal/Task.h
+        include/threadweave/internal/sorting.h
         include/threadweave/internal/utils.h
 )
 

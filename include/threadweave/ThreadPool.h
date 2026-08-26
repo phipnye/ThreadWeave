@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <new>
 #include <random>
@@ -23,6 +22,7 @@
 #include "threadweave/internal/Future.h"
 #include "threadweave/internal/NodeAllocator.h"
 #include "threadweave/internal/Task.h"
+#include "threadweave/internal/sorting.h"
 #include "threadweave/internal/utils.h"
 
 namespace ThreadWeave {
@@ -110,21 +110,10 @@ class ThreadPool {
   auto submit(F&& f, Args&&... args)
       -> Future<std::invoke_result_t<F, Args...>>;
 
-  template <typename Iter, typename Comp>
-  void sort(Iter begin, Iter end,
-            const Comp& comp =
-                std::less<typename std::iterator_traits<Iter>::value_type>{}) {
-    constexpr Index kSeqCutoff{500};
-    Internal::BlockedRange range{begin, end, kSeqCutoff};
-
-    // Base case: fewer than cutoff elements, fallback to std::sort
-    if (!range.isDivisible()) {
-      std::sort(begin, end, comp);
-      return;
-    }
-
-
-  }
+  template <typename Iter, typename Compare = std::less<
+                               typename std::iterator_traits<Iter>::value_type>>
+    requires(std::random_access_iterator<Iter>)
+  void sort(Iter begin, Iter end, Compare comp = Compare{});
 
  private:
   /**
@@ -354,6 +343,34 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   }
 
   return Future<ReturnType>{task};
+}
+
+template <typename Iter, typename Compare>
+  requires(std::random_access_iterator<Iter>)
+void ThreadPool::sort(Iter begin, Iter end, Compare comp) {
+  using DistType = std::iterator_traits<Iter>::difference_type;
+  constexpr DistType kCutoff{500};
+  const DistType dist{std::distance(begin, end)};
+
+  // Fewer than cutoff elements, fallback to std::sort
+  if (dist < kCutoff) {
+    std::sort(begin, end, comp);
+    return;
+  }
+
+  Iter piv{Internal::pickPivot(begin, end, comp)};
+
+  // Only submit LHS if sufficient number of elements
+  if (Iter mid{Internal::partition(begin, end, piv, comp)};
+      std::distance(begin, mid) < kCutoff) {
+    std::sort(begin, mid, comp);
+    sort(mid, end, comp);
+  } else {
+    // Submit LHS to the pool while current thread continues operating on RHS
+    auto futL{submit([=, this] { this->sort(begin, mid, comp); })};
+    sort(mid, end, comp);
+    futL.wait();
+  }
 }
 
 inline void ThreadPool::workerLoop(const Index threadId) {
@@ -594,19 +611,6 @@ inline void ThreadPool::awaitTask(Internal::TaskBase* const task) {
   }
 }
 
-inline ThreadPool::KeyGuard::KeyGuard(std::atomic_flag& key)
-    : key_{key}, keyAcquired_{!key.test_and_set(MemoryOrder::acquire)} {}
-
-inline ThreadPool::KeyGuard::~KeyGuard() {
-  if (keyAcquired_) {
-    key_.clear(MemoryOrder::release);
-  }
-}
-
-inline bool ThreadPool::KeyGuard::holdsKey() const noexcept {
-  return keyAcquired_;
-}
-
 template <typename ReturnType, typename Callable>
 void ThreadPool::taskEntryPoint(Internal::TaskBase* const base) {
   using TaskType = Internal::Task<ReturnType>;
@@ -660,6 +664,19 @@ void ThreadPool::taskEntryPoint(Internal::TaskBase* const base) {
   if (task->releaseReference()) {
     Allocator::deallocate(task);
   }
+}
+
+inline ThreadPool::KeyGuard::KeyGuard(std::atomic_flag& key)
+    : key_{key}, keyAcquired_{!key.test_and_set(MemoryOrder::acquire)} {}
+
+inline ThreadPool::KeyGuard::~KeyGuard() {
+  if (keyAcquired_) {
+    key_.clear(MemoryOrder::release);
+  }
+}
+
+inline bool ThreadPool::KeyGuard::holdsKey() const noexcept {
+  return keyAcquired_;
 }
 
 }  // namespace ThreadWeave

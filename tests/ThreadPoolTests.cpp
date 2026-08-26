@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <bitset>
 #include <chrono>
 #include <exception>
 #include <future>
+#include <numeric>
+#include <random>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
@@ -286,6 +289,74 @@ TEST(ThreadPoolTests, HighFrequencyLifecycleChurn) {
       EXPECT_LT(val, nTasks);
       EXPECT_FALSE(seen.test(val));
       seen.set(val);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
+TEST(ThreadPoolTests, RandomSortAccuracy) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  std::mt19937 rng{124};
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    std::ranges::shuffle(nums, rng);
+    EXPECT_FALSE(std::ranges::is_sorted(nums));
+    pool.sort(nums.begin(), nums.end());
+    EXPECT_TRUE(std::ranges::is_sorted(nums));
+    std::bitset<n> seen{};
+
+    for (Index num{0}; num < n; ++num) {
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
+TEST(ThreadPoolTests, AlreadySortedSortAccuracy) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    EXPECT_TRUE(std::ranges::is_sorted(nums));
+    pool.sort(nums.begin(), nums.end());
+    EXPECT_TRUE(std::ranges::is_sorted(nums));
+    std::bitset<n> seen{};
+
+    for (Index num{0}; num < n; ++num) {
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
+TEST(ThreadPoolTests, ReverseSortedSortAccuracy) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    EXPECT_TRUE(std::ranges::is_sorted(nums, std::greater<int>{}));
+    pool.sort(nums.begin(), nums.end());
+    EXPECT_TRUE(std::ranges::is_sorted(nums));
+    std::bitset<n> seen{};
+
+    for (Index num{0}; num < n; ++num) {
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
     }
 
     EXPECT_TRUE(seen.all());

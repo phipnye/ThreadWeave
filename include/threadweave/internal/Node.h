@@ -37,7 +37,7 @@ void resetValue(T& value) noexcept {
                 "be safely recycled inside a noexcept reset()");
   if constexpr (std::is_trivially_destructible_v<T> &&
                 std::is_trivially_default_constructible_v<T> &&
-                std::is_trivially_copy_assignable_v<T>) {
+                Internal::IsCheaplyCopyableV<T>) {
     value = T{};
   } else {
     value.~T();

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <new>
 #include <thread>
+#include <type_traits>
 
 namespace ThreadWeave {
 
@@ -14,6 +15,12 @@ namespace ThreadWeave {
 using Index = std::int64_t;
 
 namespace Internal {
+
+// Determine whether T is "cheaply" copyable (i.e., trivially copyable and 4 or
+// fewer words)
+template <typename T>
+constexpr bool IsCheaplyCopyableV{std::is_trivially_copyable_v<T> &&
+                                  (sizeof(T) <= sizeof(void*) * 4)};
 
 // Alignment to prevent false sharing
 #ifdef TW_CACHE_LINE_SIZE

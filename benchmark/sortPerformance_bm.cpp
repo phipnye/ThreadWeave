@@ -51,9 +51,7 @@ static void twQuickSortPerformanceBM(benchmark::State& state) {
     state.PauseTiming();
     nums = randVec;
     state.ResumeTiming();
-    auto f{pool.submit(
-        [&] { parallelQuickSort(nums.begin(), nums.end(), pool); })};
-    f.wait();
+    pool.sort(nums.begin(), nums.end());
   }
 }
 
