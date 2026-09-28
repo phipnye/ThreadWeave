@@ -27,9 +27,9 @@ mkdir -p "${JSON_DIR}" "${PLOT_DIR}"
 
 declare -A BENCHMARKS=(
     ["SortPerformanceBenchmark"]="sort_performance_results.json"
-    #["LatencyBenchmark"]="latency_results.json"
-    #["ComparisonsBenchmark"]="comparisons_results.json"
-    #["SpeedupBenchmark"]="speedup_results.json"
+    ["LatencyBenchmark"]="latency_results.json"
+    ["ComparisonsBenchmark"]="comparisons_results.json"
+    ["SpeedupBenchmark"]="speedup_results.json"
 )
 
 BENCH_FLAGS=(
@@ -38,7 +38,6 @@ BENCH_FLAGS=(
     "--benchmark_out_format=json"
 )
 
-# TODO: Remove this
 CPU_CORES="0,2,4,6"
 
 echo "==> Configuring and Building Release Benchmarks..."
@@ -51,13 +50,8 @@ for binary in "${!BENCHMARKS[@]}"; do
     output_json="${JSON_DIR}/${BENCHMARKS[$binary]}"
 
     if [[ -f "${exec_path}" ]]; then
-        if command -v taskset &> /dev/null && taskset -c "${CPU_CORES}" true 2>/dev/null; then
-            echo "  Executing ${binary} pinned to cores ${CPU_CORES}..."
-            taskset -c "${CPU_CORES}" "${exec_path}" "${BENCH_FLAGS[@]}" "--benchmark_out=${output_json}"
-        else
-            echo "  [NOTE] 'taskset -c ${CPU_CORES}' unavailable or invalid on host. Running unpinned."
-            "${exec_path}" "${BENCH_FLAGS[@]}" "--benchmark_out=${output_json}"
-        fi
+        echo "  Executing ${binary} pinned to cores ${CPU_CORES} with high priority..."
+        sudo chrt -f 80 taskset -c "${CPU_CORES}" "${exec_path}" "${BENCH_FLAGS[@]}" "--benchmark_out=${output_json}"
     else
         echo "  [WARNING] Binary not found: ${exec_path}. Skipping execution."
     fi

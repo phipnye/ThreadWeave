@@ -1,7 +1,5 @@
 # ThreadWeave
 
-[[THIS PROJECT IS CURRENTLY WIP AND SUBJECT TO CHANGE]]
-
 ThreadWeave is a modern C++23 concurrency library providing a high-performance, work-stealing **thread pool** along with
 a collection of lock-free data structures used to build it. It's designed for low-overhead task submission and execution
 across many worker threads.
@@ -65,9 +63,14 @@ Debug builds enable AddressSanitizer and UndefinedBehaviorSanitizer for test tar
 
 ### Run benchmarks
 
+**Note:** The benchmark script requires a Linux/Unix environment with `sudo` privileges to set real-time CPU scheduling
+priority (`chrt`) and bind execution to specific CPU cores (`taskset`) to minimize measurement variance. Depending on
+your system's hardware, you will likely want to modify the `CPU_CORES` variable in `benchmark/run_benchmarks.sh` before
+running it.
+
 ```bash
 cd benchmark
-./run_benchmarks.sh
+./run_benchmarks.sh [repetitions] # defaults to 5 repetitions
 ```
 
 Benchmark executables are built with Google Benchmark and result jsons are output to `benchmark/analysis/jsons`. If the
@@ -79,9 +82,9 @@ result plots in `benchmark/analysis/plots`.
 ```cmake
 include(FetchContent)
 FetchContent_Declare(
-    ThreadWeave
-    GIT_REPOSITORY https://github.com/phipnye/ThreadWeave.git
-    GIT_TAG main
+        ThreadWeave
+        GIT_REPOSITORY https://github.com/phipnye/ThreadWeave.git
+        GIT_TAG main
 )
 FetchContent_MakeAvailable(ThreadWeave)
 

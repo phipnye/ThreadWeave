@@ -1,13 +1,15 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <bitset>
-#include <chrono>
 #include <exception>
+#include <format>
 #include <future>
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -232,40 +234,9 @@ TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
   // This test makes sure there are no blocking calls to wait internally. By
   // having more recursive calls than available workers, we make sure workers
   // keep working instead of get() blocking
-  auto result{parallelFib(12)};
-  EXPECT_EQ(result.get(), 233);  // fib(12) = 233
+  auto res{parallelFib(12)};
+  EXPECT_EQ(res.get(), 233);  // fib(12) = 233
 }
-
-// Make sure idle threads steal tasks from working threads
-// TEST(ThreadPoolTests, VerificationOfWorkStealing) {
-//   ThreadPool pool{2};
-//   std::atomic<bool> blockWorker1{true};
-//   std::atomic<bool> stealOccurred{false};
-//
-//   // Submit a long-running task to pin one thread
-//   pool.submit([&] {
-//     while (blockWorker1.load(MemoryOrder::acquire)) {
-//       std::this_thread::yield();
-//     }
-//   });
-//
-//   // Make sure first thread is actively running task
-//   std::this_thread::sleep_for(std::chrono::milliseconds(10));
-//
-//   // Submit another task. If Worker A is blocked, Worker B must steal this
-//   task
-//   // to complete it
-//   auto f{pool.submit(
-//       [&] { stealOccurred.store(true, MemoryOrder::release); })};
-//
-//   // Wait for the stolen task to complete
-//   const std::future_status status{f.wait_for(std::chrono::seconds{2})};
-//
-//   // Unblock thread
-//   blockWorker1.store(false, MemoryOrder::release);
-//   EXPECT_EQ(status, std::future_status::ready);
-//   EXPECT_TRUE(stealOccurred.load(MemoryOrder::acquire));
-// }
 
 // Ensure proper behavior upon rapid building and destroying of pools
 TEST(ThreadPoolTests, HighFrequencyLifecycleChurn) {
@@ -295,10 +266,138 @@ TEST(ThreadPoolTests, HighFrequencyLifecycleChurn) {
   }
 }
 
-TEST(ThreadPoolTests, RandomSortAccuracy) {
+// Verify medianOfThree picks the true median regardless of input order
+TEST(ThreadPoolTests, MedianOfThreeAllOrderings) {
+  std::array perm{1, 2, 3};
+
+  do {
+    const auto begin{perm.begin()};
+    const auto median{
+        Internal::medianOfThree(begin, begin + 1, begin + 2, std::less<int>{})};
+    EXPECT_EQ(*median, 2);
+  } while (std::ranges::next_permutation(perm).found);
+}
+
+// Verify pickPivot on ascending data
+TEST(ThreadPoolTests, PickPivotAscendingData) {
+  constexpr Index n{800};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  const auto piv{
+      Internal::pickPivot(nums.begin(), nums.end(), std::less<int>{})};
+  EXPECT_EQ(*piv, 400);
+}
+
+// Verify pickPivot on descending data
+TEST(ThreadPoolTests, PickPivotDescendingData) {
+  constexpr Index n{800};
+  std::vector<int> nums(n);
+  std::iota(nums.begin(), nums.end(), 0);
+  std::ranges::reverse(nums);
+  const auto piv{
+      Internal::pickPivot(nums.begin(), nums.end(), std::less<int>{})};
+  EXPECT_EQ(*piv, 399);
+}
+
+// Verify Hoare partitioning maintains its invariant on random data
+TEST(ThreadPoolTests, HoarePartitionInvariant) {
+  static_assert(Internal::IsCheaplyCopyableV<int>);
+  constexpr Index nIterations{50};
+  constexpr Index n{200};
+  std::mt19937 rng{7};
+
+  for (int iter{0}; iter < nIterations; ++iter) {
+    std::vector<int> nums(n);
+    std::ranges::iota(nums, 0);
+    std::ranges::shuffle(nums, rng);
+    std::vector<int> original{nums};
+    auto pivIt{nums.begin() + n / 2};
+    const int pivotVal{*pivIt};
+    auto mid{Internal::hoarePartition(nums.begin(), nums.end(), pivIt,
+                                      std::less<int>{})};
+
+    for (auto it{nums.begin()}; it != mid; ++it) {
+      EXPECT_LE(*it, pivotVal);
+    }
+
+    for (auto it{mid}; it != nums.end(); ++it) {
+      EXPECT_GE(*it, pivotVal);
+    }
+
+    std::vector<int> after{nums};
+    std::ranges::sort(original);
+    std::ranges::sort(after);
+    EXPECT_EQ(original, after);
+  }
+}
+
+// Verify Lomuto partitioning maintains its invariant
+TEST(ThreadPoolTests, LomutoPartitionInvariant) {
+  static_assert(!Internal::IsCheaplyCopyableV<std::string>);
+  constexpr Index nIterations{50};
+  constexpr Index n{200};
+  std::mt19937 rng{11};
+
+  for (int iter{0}; iter < nIterations; ++iter) {
+    std::vector<std::string> words(n);
+
+    for (int i{0}; i < n; ++i) {
+      words[i] = std::to_string(i);
+    }
+
+    std::ranges::shuffle(words, rng);
+    std::vector<std::string> original{words};
+    auto pivIt{words.begin() + n / 2};
+    const std::string pivotVal{*pivIt};
+    auto mid{Internal::lomutoPartition(words.begin(), words.end(), pivIt,
+                                       std::less<std::string>{})};
+    EXPECT_EQ(*mid, pivotVal);
+
+    for (auto it{words.begin()}; it != mid; ++it) {
+      EXPECT_LT(*it, pivotVal);
+    }
+
+    for (auto it{std::next(mid)}; it != words.end(); ++it) {
+      EXPECT_GE(*it, pivotVal);
+    }
+
+    std::vector<std::string> after{words};
+    std::ranges::sort(original);
+    std::ranges::sort(after);
+    EXPECT_EQ(original, after);
+  }
+}
+
+// Ensure divisibilty of blocked ranges for a given grain size
+TEST(ThreadPoolTests, BlockedRangeIsDivisible) {
+  constexpr Index n{100};
+  std::vector<int> nums(n);
+  const Internal::BlockedRange divisible{nums.begin(), nums.end(), n / 2};
+  EXPECT_TRUE(divisible.isDivisible());
+  const Internal::BlockedRange exactlyGrainSize{nums.begin(), nums.end(), n};
+  EXPECT_FALSE(exactlyGrainSize.isDivisible());
+}
+
+// Verify split divides the range in half, LHS keeping the remainder and RHS
+// getting the rounded-up half
+TEST(ThreadPoolTests, BlockedRangeSplit) {
+  constexpr Index n{101};
+  constexpr Index grainSize{10};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  Internal::BlockedRange rng{nums.begin(), nums.end(), grainSize};
+  const auto rhs{rng.split()};
+  EXPECT_EQ(std::distance(rng.begin(), rng.end()), n / 2);
+  EXPECT_EQ(std::distance(rhs.begin(), rhs.end()), (n + 1) / 2);
+  EXPECT_EQ(rng.end(), rhs.begin());
+}
+
+// Make sure sorting works on random data that is cheaply copyable
+TEST(ThreadPoolTests, RandomSortAccuracyCheap) {
   constexpr Index nIterations{20};
   constexpr Index n{100'000};
   std::vector<int> nums(n);
+  static_assert(Internal::IsCheaplyCopyableV<decltype(nums)::value_type>);
   std::ranges::iota(nums, 0);
   std::mt19937 rng{124};
   ThreadPool pool{4};
@@ -319,10 +418,12 @@ TEST(ThreadPoolTests, RandomSortAccuracy) {
   }
 }
 
-TEST(ThreadPoolTests, AlreadySortedSortAccuracy) {
+// Make sure sorting works on already sorted data that is cheaply copyable
+TEST(ThreadPoolTests, AlreadySortedSortAccuracyCheap) {
   constexpr Index nIterations{20};
   constexpr Index n{100'000};
   std::vector<int> nums(n);
+  static_assert(Internal::IsCheaplyCopyableV<decltype(nums)::value_type>);
   std::ranges::iota(nums, 0);
   ThreadPool pool{4};
 
@@ -341,11 +442,15 @@ TEST(ThreadPoolTests, AlreadySortedSortAccuracy) {
   }
 }
 
+// Make sure sorting works on already reverse sorted data that is cheaply
+// copyable
 TEST(ThreadPoolTests, ReverseSortedSortAccuracy) {
   constexpr Index nIterations{20};
   constexpr Index n{100'000};
   std::vector<int> nums(n);
+  static_assert(Internal::IsCheaplyCopyableV<decltype(nums)::value_type>);
   std::ranges::iota(nums, 0);
+  std::ranges::reverse(nums);
   ThreadPool pool{4};
 
   for (int i{0}; i < nIterations; ++i) {
@@ -360,5 +465,250 @@ TEST(ThreadPoolTests, ReverseSortedSortAccuracy) {
     }
 
     EXPECT_TRUE(seen.all());
+    std::ranges::reverse(nums);
+  }
+}
+
+// Verify sorting works on random data that is not cheaply copyable
+TEST(ThreadPoolTests, RandomSortAccuracyNonCheap) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<std::string> strs(n);
+
+  for (Index i{0}; i < n; ++i) {
+    strs[i] = std::format("{:06d}", i);
+  }
+
+  static_assert(!Internal::IsCheaplyCopyableV<decltype(strs)::value_type>);
+  std::mt19937 rng{124};
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    std::ranges::shuffle(strs, rng);
+    EXPECT_FALSE(std::ranges::is_sorted(strs));
+    pool.sort(strs.begin(), strs.end());
+    EXPECT_TRUE(std::ranges::is_sorted(strs));
+    std::bitset<n> seen{};
+
+    for (const auto& s : strs) {
+      const Index num{std::stoi(s)};
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
+// Verify sorting works on already sorted data that is not cheaply copyable
+TEST(ThreadPoolTests, AlreadySortedSortAccuracyNonCheap) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<std::string> strs(n);
+
+  for (Index i{0}; i < n; ++i) {
+    strs[i] = std::format("{:06d}", i);
+  }
+
+  static_assert(!Internal::IsCheaplyCopyableV<decltype(strs)::value_type>);
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    EXPECT_TRUE(std::ranges::is_sorted(strs));
+    pool.sort(strs.begin(), strs.end());
+    EXPECT_TRUE(std::ranges::is_sorted(strs));
+    std::bitset<n> seen{};
+
+    for (const auto& s : strs) {
+      const Index num{std::stoi(s)};
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
+// Verify sorting works on already reverse sorted data that is not cheaply
+// copyable
+TEST(ThreadPoolTests, ReverseSortedSortAccuracyNonCheap) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<std::string> strs(n);
+
+  for (Index i{0}; i < n; ++i) {
+    strs[i] = std::format("{:06d}", i);
+  }
+
+  std::ranges::reverse(strs);
+  static_assert(!Internal::IsCheaplyCopyableV<decltype(strs)::value_type>);
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    EXPECT_TRUE(std::ranges::is_sorted(strs, std::greater<>{}));
+    pool.sort(strs.begin(), strs.end());
+    EXPECT_TRUE(std::ranges::is_sorted(strs));
+    std::bitset<n> seen{};
+
+    for (const auto& s : strs) {
+      const Index num{std::stoi(s)};
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+    std::ranges::reverse(strs);
+  }
+}
+
+// Verify forEach visits every element exactly once across various grain sizes
+TEST(ThreadPoolTests, ForEachVisitsEveryElementOnce) {
+  constexpr Index n{100'000};
+  constexpr Index grainSizes[]{1, 7, 500, 10'000, n * 2};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  ThreadPool pool{4};
+
+  for (const Index grainSize : grainSizes) {
+    std::vector<std::atomic<int>> seen(n);
+    pool.forEach(
+        nums.begin(), nums.end(),
+        [&](const int v) { seen[v].fetch_add(1, MemoryOrder::relaxed); },
+        grainSize);
+
+    for (Index i{0}; i < n; ++i) {
+      EXPECT_EQ(seen[i].load(MemoryOrder::relaxed), 1);
+    }
+  }
+}
+
+// Make sure forEach's function receives correct element references
+TEST(ThreadPoolTests, ForEachMutatesElementsInPlace) {
+  constexpr Index n{50'000};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  ThreadPool pool{4};
+  pool.forEach(nums.begin(), nums.end(), [](int& v) { v *= 2; }, 500);
+
+  for (Index i{0}; i < n; ++i) {
+    EXPECT_EQ(nums[i], static_cast<int>(i) * 2);
+  }
+}
+
+// Verify forEach works on non-cheaply copyable elements
+TEST(ThreadPoolTests, ForEachWorksOnNonCheaplyCopyableElements) {
+  static_assert(!Internal::IsCheaplyCopyableV<std::string>);
+  constexpr Index n{20'000};
+  std::vector<std::string> words(n);
+
+  for (Index i{0}; i < n; ++i) {
+    words[i] = std::to_string(i);
+  }
+
+  ThreadPool pool{4};
+  pool.forEach(
+      words.begin(), words.end(), [](std::string& s) { s += "_seen"; }, 500);
+
+  for (Index i{0}; i < n; ++i) {
+    EXPECT_EQ(words[i], std::to_string(i) + "_seen");
+  }
+}
+
+// Ensure reduce's result matches a sequential accumulate across various grain
+// sizes
+TEST(ThreadPoolTests, ReduceSumMatchesSequentialAccumulate) {
+  constexpr Index n{50'000};
+  constexpr Index grainSizes[]{1, 7, 500, 10'000, n};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 1);
+  ThreadPool pool{4};
+  const int expected{std::accumulate(nums.begin(), nums.end(), 0)};
+
+  for (const Index grainSize : grainSizes) {
+    const int res{pool.reduce(
+        nums.begin(), nums.end(), 0,
+        [](const int x, const int y) { return x + y; }, grainSize)};
+    EXPECT_EQ(res, expected);
+  }
+}
+
+// Verify reduce applies a non-identity init exactly once, regardless of how
+// many times the range gets split
+TEST(ThreadPoolTests, ReduceAppliesInitExactlyOnce) {
+  constexpr Index n{50'000};
+  constexpr Index grainSizes[]{1, 7, 500, 10'000, n};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 1);
+  ThreadPool pool{4};
+  constexpr int init{100};
+  const int expected{std::accumulate(nums.begin(), nums.end(), init)};
+
+  for (Index grainSize : grainSizes) {
+    const int res{pool.reduce(
+        nums.begin(), nums.end(), init,
+        [](const int x, const int y) { return x + y; }, grainSize)};
+    EXPECT_EQ(res, expected) << "grainSize=" << grainSize;
+  }
+}
+
+// Verify reduce on an empty range returns init untouched
+TEST(ThreadPoolTests, ReduceOnEmptyRangeReturnsInit) {
+  std::vector<int> nums{};
+  ThreadPool pool{4};
+  constexpr int init{42};
+  const int resAdd{pool.reduce(nums.begin(), nums.end(), init,
+                               [](const int x, const int y) { return x + y; })};
+  const int resMul{pool.reduce(nums.begin(), nums.end(), init,
+                               [](const int x, const int y) { return x * y; })};
+  EXPECT_EQ(resAdd, init);
+  EXPECT_EQ(resMul, init);
+}
+
+// Verify reduce product matches sequential product across various grain sizes
+TEST(ThreadPoolTests, ReduceProductMatchesSequential) {
+  constexpr Index n{1'000};
+  constexpr Index grainSizes[]{1, 7, 50, 200, n};
+  std::vector<double> nums(n);
+
+  for (Index i{0}; i < n; ++i) {
+    nums[i] = 1.0 + (1.0 / static_cast<double>(i + 1'000));
+  }
+
+  ThreadPool pool{4};
+  const double expected{
+      std::accumulate(nums.begin(), nums.end(), 1.0,
+                      [](const double x, const double y) { return x * y; })};
+
+  for (const Index grainSize : grainSizes) {
+    constexpr double epsilon{1e-9};
+    const double res{pool.reduce(
+        nums.begin(), nums.end(), 1.0,
+        [](const double x, const double y) { return x * y; }, grainSize)};
+    EXPECT_NEAR(res, expected, epsilon) << "grainSize=" << grainSize;
+  }
+}
+
+// Verify reduce product applies non-identity init value exactly once
+TEST(ThreadPoolTests, ReduceProductAppliesInitExactlyOnce) {
+  constexpr Index n{500};
+  constexpr Index grainSizes[]{1, 13, 100, n};
+  std::vector<double> nums(n);
+
+  for (Index i{0}; i < n; ++i) {
+    nums[i] = 1.001;
+  }
+
+  ThreadPool pool{4};
+  constexpr double init{2.5};
+  const double expected{
+      std::accumulate(nums.begin(), nums.end(), init,
+                      [](const double x, const double y) { return x * y; })};
+
+  for (const Index grainSize : grainSizes) {
+    constexpr double epsilon{1e-9};
+    const double res{pool.reduce(
+        nums.begin(), nums.end(), init,
+        [](const double x, const double y) { return x * y; }, grainSize)};
+    EXPECT_NEAR(res, expected, epsilon) << "grainSize=" << grainSize;
   }
 }

@@ -23,21 +23,17 @@ class BlockedRange {
       Iter first, Iter last,
       const DistType
           grainSize) noexcept(std::is_nothrow_copy_constructible_v<Iter>)
-      : first_{first}, last_{last}, grainSize_{grainSize} {}
+      : first_{first}, last_{last}, grainSize_{grainSize} {
+    TW_ASSERT(grainSize > 0, "Grain size should be strictly positive");
+  }
 
   // --- Member functions
   BlockedRange split() noexcept(noexcept(dist())) {
+    TW_ASSERT(isDivisible(), "Trying to split an indivisible BlockedRange");
     Iter mid{first_ + (dist() >> 1)};
-
-    if constexpr (std::is_nothrow_constructible_v<BlockedRange, Iter, Iter,
-                                                  DistType>) {
-      last_ = mid;
-      return BlockedRange{mid, last_, grainSize_};
-    } else {
-      BlockedRange other{mid, last_, grainSize_};
-      last_ = mid;
-      return other;
-    }
+    BlockedRange res{mid, last_, grainSize_};
+    last_ = mid;
+    return res;
   }
 
   bool isDivisible() const noexcept(noexcept(dist())) {

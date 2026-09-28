@@ -134,12 +134,10 @@ inline ThreadHazardManager::~ThreadHazardManager() {
     hp.store(nullptr, MemoryOrder::relaxed);
   }
 
-#ifndef TW_NDEBUG
-  for (const auto& hp : hpsPool[poolIdx_]) {
+  TW_DEBUG_ONLY(for (const auto& hp : hpsPool[poolIdx_]) {
     TW_ASSERT(hp.load(MemoryOrder::relaxed) == nullptr,
               "Hazard pointer failed to clear during slot release");
-  }
-#endif
+  });
 
   threadIds[poolIdx_].store(std::thread::id{}, MemoryOrder::release);
 }

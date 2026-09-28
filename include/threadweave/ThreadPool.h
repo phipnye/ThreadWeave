@@ -110,6 +110,61 @@ class ThreadPool {
   auto submit(F&& f, Args&&... args)
       -> Future<std::invoke_result_t<F, Args...>>;
 
+  /**
+   * Apply a function to each element in a range, splitting work across the
+   * thread pool for sufficiently large ranges
+   * @tparam Iter A generic iterator type
+   * @tparam F A generic type of function, called once per element
+   * @param begin Iterator to the start of the range
+   * @param end Iterator to the end of the range
+   * @param f Function invoked as f(*it) for each element in [begin, end)
+   * @param grainSize Minimum range size below which work is done sequentially
+   * instead of being split further (defaults to 500)
+   */
+  template <typename Iter, typename F>
+  void forEach(Iter begin, Iter end, F f,
+               std::iterator_traits<Iter>::difference_type grainSize = 500);
+
+  /**
+   * Reduce a range to a single value by combining elements, splitting work
+   * across the thread pool for sufficiently large ranges
+   * @tparam T The type of the accumulated result
+   * @tparam Iter A generic iterator type
+   * @tparam F A generic type of function, used to combine two partial results
+   * into one
+   * @param begin Iterator to the start of the range
+   * @param end Iterator to the end of the range
+   * @param init Initial value for the reduction, combined with the result
+   * of the range exactly once — does NOT need to be an identity element for f
+   * @param f Binary function invoked as f(partial, *it) to fold elements into
+   * a partial result, and as f(lhsResult, rhsResult) to combine partial results
+   * from split sub-ranges
+   * @param grainSize Minimum range size below which work is done sequentially
+   * instead of being split further
+   * @return init combined with the accumulated result of folding f over [begin,
+   * end)
+   */
+  template <typename T, typename Iter, typename F>
+  T reduce(Iter begin, Iter end, T init, F f,
+           std::iterator_traits<Iter>::difference_type grainSize = 500);
+
+ private:
+  /**
+   * Fold a non-empty range into a single value using f
+   */
+  template <typename T, typename Iter, typename F>
+  T reduceRange(Iter begin, Iter end, F f,
+                std::iterator_traits<Iter>::difference_type grainSize);
+
+ public:
+  /**
+   * Sort an object that support random access iterators
+   * @tparam Iter a random access iterator type
+   * @tparam Compare a comparison functor
+   * @param begin the beginning of the range to sort
+   * @param end the end of the range to sort
+   * @param comp a comparison functor instance (defaults to std::less<>)
+   */
   template <typename Iter, typename Compare = std::less<
                                typename std::iterator_traits<Iter>::value_type>>
     requires(std::random_access_iterator<Iter>)
@@ -172,8 +227,6 @@ class ThreadPool {
    */
   void decrementNumQueued(std::memory_order order) noexcept;
 
- public:
-  // TODO: Shouldn't be public
   /**
    * Helper function for a thread to wait on a task result to be ready. If the
    * caller is a worker thread in a thread pool, it continues executing work
@@ -183,7 +236,10 @@ class ThreadPool {
    */
   static void awaitTask(Internal::TaskBase* task);
 
- private:
+  // Future<T>::wait() calls await task
+  template <typename T, typename WaitPolicy>
+  friend class Future;
+
   /**
    * Helper entry point for tasks submitted to the pool
    * @tparam ReturnType type of the value returned from the submitted task
@@ -260,15 +316,12 @@ inline ThreadPool::~ThreadPool() {
     t.join();
   }
 
-#ifndef TW_NDEBUG
-  {
-    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
-    TW_ASSERT(_nQueued == 0,
-              "Thread pool destroyed with unexecuted queued tasks remaining");
-    TW_ASSERT(nPendingTasks_.load(MemoryOrder::relaxed) == 0,
-              "Thread pool destroyed with pending tasks remaining");
-  }
-#endif
+  TW_DEBUG_ONLY(
+      const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+      TW_ASSERT(_nQueued == 0,
+                "Thread pool destroyed with unexecuted queued tasks remaining");
+      TW_ASSERT(nPendingTasks_.load(MemoryOrder::relaxed) == 0,
+                "Thread pool destroyed with pending tasks remaining"););
 }
 
 template <typename F, typename... Args>
@@ -280,8 +333,6 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   static_assert(!std::is_reference_v<ReturnType>,
                 "Reference return types are not supported directly. Return a "
                 "pointer or std::reference_wrapper instead.");
-
-  // Package the functions and arguments into a lambda
   auto callable{
       [f = std::forward<F>(f), ... args = std::forward<Args>(args)]() mutable {
         return std::invoke(std::move(f), std::move(args)...);
@@ -345,9 +396,81 @@ auto ThreadPool::submit(F&& f, Args&&... args)
   return Future<ReturnType>{task};
 }
 
+template <typename Iter, typename F>
+void ThreadPool::forEach(
+    Iter begin, Iter end, F f,
+    const typename std::iterator_traits<Iter>::difference_type grainSize) {
+  Internal::BlockedRange<Iter> blockRng{begin, end, grainSize};
+
+  // When insufficient range left, perform tasks sequentially
+  if (!blockRng.isDivisible()) {
+    for (Iter it{begin}; it != end; ++it) {
+      f(*it);
+    }
+
+    return;
+  }
+
+  // Submit RHS to pool and have current worker continue working on LHS
+  Internal::BlockedRange<Iter> rhs{blockRng.split()};
+  auto futR{submit(
+      [=, this] { this->forEach(rhs.begin(), rhs.end(), f, grainSize); })};
+  forEach(blockRng.begin(), blockRng.end(), f, grainSize);
+  futR.wait();
+}
+
+template <typename T, typename Iter, typename F>
+T ThreadPool::reduce(
+    Iter begin, Iter end, T init, F f,
+    const typename std::iterator_traits<Iter>::difference_type grainSize) {
+  static_assert(std::is_same_v<std::invoke_result_t<F, T, decltype(*begin)>, T>,
+                "Function f does not return type T when folding an element");
+  static_assert(
+      std::is_same_v<std::invoke_result_t<F, T, T>, T>,
+      "Function f does not return type T when combining two partial results");
+
+  if (begin == end) [[unlikely]] {
+    return init;
+  }
+
+  return f(std::move(init), reduceRange<T, Iter, F>(begin, end, f, grainSize));
+}
+
+template <typename T, typename Iter, typename F>
+T ThreadPool::reduceRange(
+    Iter begin, Iter end, F f,
+    const typename std::iterator_traits<Iter>::difference_type grainSize) {
+  TW_ASSERT(grainSize > 0, "Expected a positive grain size");
+  TW_ASSERT(begin != end, "Expected a non-empty range");
+  Internal::BlockedRange<Iter> blockRng{begin, end, grainSize};
+
+  if (!blockRng.isDivisible()) {
+    Iter it{begin};
+    T res{*it};
+
+    for (++it; it != end; ++it) {
+      res = f(res, *it);
+    }
+
+    return res;
+  }
+
+  // Split the full current range into a LHS and RHS - note that split should
+  // never return an empty range for either side
+  Internal::BlockedRange<Iter> rhsRng{blockRng.split()};
+  auto futR{submit([=, this] {
+    return this->reduceRange<T, Iter, F>(rhsRng.begin(), rhsRng.end(), f,
+                                         grainSize);
+  })};
+  const T lhs{
+      reduceRange<T, Iter, F>(blockRng.begin(), blockRng.end(), f, grainSize)};
+  return f(lhs, futR.get());
+}
+
 template <typename Iter, typename Compare>
   requires(std::random_access_iterator<Iter>)
 void ThreadPool::sort(Iter begin, Iter end, Compare comp) {
+  // TODO: Verify for std::reference_wrapper
   using DistType = std::iterator_traits<Iter>::difference_type;
   constexpr DistType kCutoff{500};
   const DistType dist{std::distance(begin, end)};
@@ -375,8 +498,8 @@ void ThreadPool::sort(Iter begin, Iter end, Compare comp) {
 
 inline void ThreadPool::workerLoop(const Index threadId) {
   // Store information related to the worker so that it can write to its own
-  // deque if submissions happen "recursively" (i.e., a pushed task submits
-  // new tasks)
+  // deque if submissions happen "recursively" (i.e., a pushed task submits new
+  // tasks)
   currentPool = this;
   workerId = threadId;
 
@@ -410,9 +533,9 @@ inline void ThreadPool::workerLoop(const Index threadId) {
       // tasks, otherwise, we park until workers executing tasks indicate an
       // update
       if (nQueuedTasks == 0) {
-        // Listen for remaining tasks to either finish (notification happens
-        // in executeTask() in which case we will try to terminate next loop)
-        // or submit a new task
+        // Listen for remaining tasks to either finish (notification happens in
+        // executeTask() in which case we will try to terminate next loop) or
+        // submit a new task
         nPendingTasks_.wait(nPending, MemoryOrder::relaxed);
       }
     }
@@ -566,17 +689,14 @@ inline void ThreadPool::incrementNumQueued(
 
 inline void ThreadPool::decrementNumQueued(
     const std::memory_order order) noexcept {
-#ifndef TW_NDEBUG
-  {
-    // If decrementNumQueued is called when nQueuedTasks == 0, bit underflow
-    // will corrupt the kStopMask bit (LSB), putting the thread pool into an
-    // irrecoverable state.
-    const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
-    TW_ASSERT(_nQueued > 0,
-              "Underflow detected: decrementNumQueued called with 0 queued "
-              "tasks");
-  }
-#endif
+  TW_DEBUG_ONLY(
+      // If decrementNumQueued is called when nQueuedTasks == 0, bit underflow
+      // will corrupt the kStopMask bit (LSB), putting the thread pool into an
+      // irrecoverable state.
+      const auto [_state, _nQueued, _stop]{getState(MemoryOrder::relaxed)};
+      TW_ASSERT(_nQueued > 0,
+                "Underflow detected: decrementNumQueued called with 0 queued "
+                "tasks"););
 
   state_.fetch_sub(kTaskUnit, order);
 }
