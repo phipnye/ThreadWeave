@@ -476,6 +476,7 @@ TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperCheap) {
   constexpr Index n{100'000};
   std::vector<int> nums(n);
   std::ranges::iota(nums, 0);
+  const std::vector<int> copy{nums};
   std::vector<std::reference_wrapper<int>> refNums{nums.begin(), nums.end()};
   static_assert(Internal::IsCheaplyCopyableV<decltype(refNums)::value_type>);
   std::mt19937 rng{124};
@@ -488,13 +489,14 @@ TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperCheap) {
     EXPECT_TRUE(std::ranges::is_sorted(refNums));
     std::bitset<n> seen{};
 
-    for (const auto& ref : refNums) {
+    for (const auto ref : refNums) {
       const Index num{ref.get()};
       EXPECT_FALSE(seen.test(num));
       seen.set(num);
     }
 
     EXPECT_TRUE(seen.all());
+    EXPECT_TRUE(nums == copy);
   }
 }
 
@@ -602,6 +604,7 @@ TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperNonCheap) {
   }
 
   using StrRef = std::reference_wrapper<std::string>;
+  const std::vector<std::string> copy{strs};
   std::vector<StrRef> refStrs{strs.begin(), strs.end()};
 
   // The wrapper itself is cheaply copyable
@@ -618,13 +621,14 @@ TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperNonCheap) {
     EXPECT_TRUE(std::ranges::is_sorted(refStrs, comp));
     std::bitset<n> seen{};
 
-    for (const auto& ref : refStrs) {
+    for (const auto ref : refStrs) {
       const Index num{std::stoi(ref.get())};
       EXPECT_FALSE(seen.test(num));
       seen.set(num);
     }
 
     EXPECT_TRUE(seen.all());
+    EXPECT_TRUE(strs == copy);
   }
 }
 
