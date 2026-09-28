@@ -70,7 +70,6 @@ if (PROJECT_IS_TOP_LEVEL)
             -pedantic-errors
             -Werror
             -Wno-error=sign-conversion
-            -Wno-interference-size
     )
 
     # Subdirectories

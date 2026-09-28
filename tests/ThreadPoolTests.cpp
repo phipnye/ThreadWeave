@@ -218,15 +218,29 @@ TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
   ThreadPool pool{4};
 
   // Parallel version of naive fibonacci
-  auto parallelFib{[&pool](this auto self, int n) {
+  // auto parallelFib{[&pool](this auto self, int n) {
+  //   if (n <= 1) {
+  //     return pool.submit([] { return 1; });
+  //   }
+  //
+  //   // Submit nested work from inside a worker thread
+  //   return pool.submit([self, n] {
+  //     auto lhs{self(n - 1)};
+  //     auto rhs{self(n - 2)};
+  //     return lhs.get() + rhs.get();
+  //   });
+  // }};
+
+  // Many compilers don't support explicit object parameter yet
+  auto parallelFib{[&pool](auto self, int n) {
     if (n <= 1) {
       return pool.submit([] { return 1; });
     }
 
     // Submit nested work from inside a worker thread
     return pool.submit([self, n] {
-      auto lhs{self(n - 1)};
-      auto rhs{self(n - 2)};
+      auto lhs{self(self, n - 1)};
+      auto rhs{self(self, n - 2)};
       return lhs.get() + rhs.get();
     });
   }};
@@ -234,7 +248,7 @@ TEST(ThreadPoolTests, HandlesNestedTaskSubmission) {
   // This test makes sure there are no blocking calls to wait internally. By
   // having more recursive calls than available workers, we make sure workers
   // keep working instead of get() blocking
-  auto res{parallelFib(12)};
+  auto res{parallelFib(parallelFib, 12)};
   EXPECT_EQ(res.get(), 233);  // fib(12) = 233
 }
 

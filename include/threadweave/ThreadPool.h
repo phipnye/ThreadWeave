@@ -470,7 +470,6 @@ T ThreadPool::reduceRange(
 template <typename Iter, typename Compare>
   requires(std::random_access_iterator<Iter>)
 void ThreadPool::sort(Iter begin, Iter end, Compare comp) {
-  // TODO: Verify for std::reference_wrapper
   using DistType = std::iterator_traits<Iter>::difference_type;
   constexpr DistType kCutoff{500};
   const DistType dist{std::distance(begin, end)};
