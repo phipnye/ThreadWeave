@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.23)
 project(ThreadWeave VERSION 1.0 LANGUAGES CXX)
 
 option(TW_BUILD_BENCHMARKS "Build benchmarks" ON)
-option(TW_BUILD_EXAMPLES, "Build example targets" ON)
+option(TW_BUILD_EXAMPLES "Build example targets" ON)
 option(TW_BUILD_PROFILE "Build profiling targets" ON)
 option(TW_BUILD_TESTS "Build testing targets" ON)
 
@@ -59,6 +59,8 @@ if (PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CXX_EXTENSIONS OFF)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    target_compile_options(ThreadWeave INTERFACE $<$<CONFIG:Debug>:-Og>)
+    include(FetchContent)
 
     # Compiler warning flags applied strictly to testing/examples
     set(COMPILER_FLAGS
@@ -75,6 +77,15 @@ if (PROJECT_IS_TOP_LEVEL)
     # Subdirectories
     if (TW_BUILD_BENCHMARKS)
         add_subdirectory(benchmark)
+        set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+                googlebenchmark
+                GIT_REPOSITORY https://github.com/google/benchmark.git
+                GIT_TAG v1.9.5
+                DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(googlebenchmark)
     endif ()
 
     if (TW_BUILD_EXAMPLES)
@@ -87,23 +98,11 @@ if (PROJECT_IS_TOP_LEVEL)
 
     if (TW_BUILD_TESTS)
         add_subdirectory(tests)
+        FetchContent_Declare(
+                googletest
+                URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+                DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(googletest)
     endif ()
-
-    # Dependencies
-    include(FetchContent)
-    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-            googlebenchmark
-            GIT_REPOSITORY https://github.com/google/benchmark.git
-            GIT_TAG v1.9.5
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
-    FetchContent_MakeAvailable(googlebenchmark)
-    FetchContent_Declare(
-            googletest
-            URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
-    FetchContent_MakeAvailable(googletest)
 endif ()
