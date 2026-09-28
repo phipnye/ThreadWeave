@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <type_traits>
 
 #include "threadweave/internal/Node.h"
