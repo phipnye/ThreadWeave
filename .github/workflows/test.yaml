@@ -7,5 +7,5 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: bash ./tests/run_tests.sh
+      - run: bash ./run_tests.sh
         working-directory: tests
