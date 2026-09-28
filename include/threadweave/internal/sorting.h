@@ -121,7 +121,7 @@ template <typename Iter, typename Compare>
 Iter lomutoPartition(Iter begin, Iter end, Iter piv, Compare comp) {
   static_assert(!Internal::IsCheaplyCopyableV<
                     typename std::iterator_traits<Iter>::value_type>,
-                "Calling Lomuto partitioning on a heaply copyable type");
+                "Calling Lomuto partitioning on a cheaply copyable type");
   Iter last{std::prev(end)};
   std::iter_swap(piv, last);  // pivot stored at last to prevent invalidation
   Iter lPtr{begin};
@@ -151,8 +151,11 @@ Iter lomutoPartition(Iter begin, Iter end, Iter piv, Compare comp) {
 template <typename Iter, typename Compare>
   requires(std::random_access_iterator<Iter>)
 Iter partition(Iter begin, Iter end, Iter piv, Compare comp) {
-  // If it's trivially copyable, use Hoare because we can just copy pivot value
-  // and potentially use fewer swaps, otherwise use lomuto
+  // Hoare's partitioning is generally more efficient but we rely on copying the
+  // pivot value to perform it. Thus, if we can cheaply copy the pivot value, we
+  // use Hoare's partitioning and potentially use fewer swaps, otherwise we use
+  // Lomuto which (here) does not rely on copying the pivot (preventing
+  // potentially expensive copies from occurring)
   if constexpr (Internal::IsCheaplyCopyableV<
                     typename std::iterator_traits<Iter>::value_type>) {
     return hoarePartition(begin, end, piv, comp);
