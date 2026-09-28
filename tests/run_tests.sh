@@ -21,7 +21,7 @@ for test_cpp in *Tests.cpp; do
 
     if [[ -f "${exec_path}" ]]; then
         echo "  Executing ${test_name}..."
-        "${exec_path}" --gtest_filter=* --gtest_color=no --gtest_brief=1
+        "${exec_path}" --gtest_filter=* --gtest_color=no
     else
         echo "  [WARNING] Test binary not found: ${exec_path}. Skipping execution."
     fi

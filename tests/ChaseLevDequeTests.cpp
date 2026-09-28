@@ -128,7 +128,7 @@ TEST(ChaseLevDequeTests, StealDuringExpandStress) {
 
 #ifndef TW_NDEBUG
   const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
-  std::cout << "# of expansions = " << nExpands << '\n';
+  // std::cout << "# of expansions = " << nExpands << '\n';
   ASSERT_GT(nExpands, 0) << "No expansion occurred";
 #else
   SUCCEED() << "Test cannot verify expansions occurred in release mode";
