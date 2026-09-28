@@ -7,10 +7,10 @@ if ! command -v cmake &> /dev/null; then
 fi
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${TEST_DIR}/../cmake-build-debug"
+BUILD_DIR="${TEST_DIR}/../cmake-build-release"
 
-echo "==> Configuring Debug Build..."
-cmake -B "${BUILD_DIR}" -S "${TEST_DIR}/.." -DCMAKE_BUILD_TYPE=Debug -DTW_BUILD_BENCHMARKS=OFF -DTW_BUILD_PROFILE=OFF \
+echo "==> Configuring Release Build..."
+cmake -B "${BUILD_DIR}" -S "${TEST_DIR}/.." -DCMAKE_BUILD_TYPE=Release -DTW_BUILD_BENCHMARKS=OFF -DTW_BUILD_PROFILE=OFF \
   -DTW_BUILD_EXAMPLES=OFF
 
 for test_cpp in *Tests.cpp; do
