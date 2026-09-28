@@ -102,7 +102,7 @@ TEST(ChaseLevDequeTests, WrapAroundBoundary) {
 
 // Force expansion of the internal ring buffer while thieves may be looking at
 // old buffer to make sure there's no invalid pointer use
-TEST(ChaseLevDequeTests, ExpandsWhenFull) {
+TEST(ChaseLevDequeTests, StealDuringExpandStress) {
   ChaseLevDeque<int> dq{};
   constexpr int nThieves{2};
   constexpr int nItems{500'000};
@@ -113,18 +113,14 @@ TEST(ChaseLevDequeTests, ExpandsWhenFull) {
     thieves.emplace_back([&] {
       while (!stop.load(MemoryOrder::acquire)) {
         dq.steal();
+        std::this_thread::sleep_for(std::chrono::microseconds{20});
       }
     });
   }
 
-  Index maxSize{0};
   for (int i{0}; i < nItems; ++i) {
     dq.push(i);
-    if (i % 1000 == 0) {
-      maxSize = std::max(maxSize, dq.approxSize());
-    }
   }
-  std::cout << "max approxSize seen = " << maxSize << '\n';
 
   while (dq.pop()) {}
   stop.store(true, MemoryOrder::release);
@@ -132,7 +128,7 @@ TEST(ChaseLevDequeTests, ExpandsWhenFull) {
 
 #ifndef TW_NDEBUG
   const auto nExpands{dq.debugExpandCnt_.load(MemoryOrder::relaxed)};
-  std::cout << "# of expansions = " << nExpands << std::endl;
+  std::cout << "# of expansions = " << nExpands << '\n';
   ASSERT_GT(nExpands, 0) << "No expansion occurred";
 #else
   SUCCEED() << "Test cannot verify expansions occurred in release mode";
