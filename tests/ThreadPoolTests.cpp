@@ -469,6 +469,35 @@ TEST(ThreadPoolTests, ReverseSortedSortAccuracy) {
   }
 }
 
+// Verify sorting works on random data wrapped in std::reference_wrapper (for
+// trivially copyable types)
+TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperCheap) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<int> nums(n);
+  std::ranges::iota(nums, 0);
+  std::vector<std::reference_wrapper<int>> refNums{nums.begin(), nums.end()};
+  static_assert(Internal::IsCheaplyCopyableV<decltype(refNums)::value_type>);
+  std::mt19937 rng{124};
+  ThreadPool pool{4};
+
+  for (int i{0}; i < nIterations; ++i) {
+    std::ranges::shuffle(refNums, rng);
+    EXPECT_FALSE(std::ranges::is_sorted(refNums));
+    pool.sort(refNums.begin(), refNums.end());
+    EXPECT_TRUE(std::ranges::is_sorted(refNums));
+    std::bitset<n> seen{};
+
+    for (const auto& ref : refNums) {
+      const Index num{ref.get()};
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
+  }
+}
+
 // Verify sorting works on random data that is not cheaply copyable
 TEST(ThreadPoolTests, RandomSortAccuracyNonCheap) {
   constexpr Index nIterations{20};
@@ -558,6 +587,44 @@ TEST(ThreadPoolTests, ReverseSortedSortAccuracyNonCheap) {
 
     EXPECT_TRUE(seen.all());
     std::ranges::reverse(strs);
+  }
+}
+
+// Verify sorting works on random data wrapped in std::reference_wrapper
+// (cheaply copyable wrapper around non-cheap type)
+TEST(ThreadPoolTests, RandomSortAccuracyRefWrapperNonCheap) {
+  constexpr Index nIterations{20};
+  constexpr Index n{100'000};
+  std::vector<std::string> strs(n);
+
+  for (Index i{0}; i < n; ++i) {
+    strs[i] = std::format("{:06d}", i);
+  }
+
+  using StrRef = std::reference_wrapper<std::string>;
+  std::vector<StrRef> refStrs{strs.begin(), strs.end()};
+
+  // The wrapper itself is cheaply copyable
+  static_assert(Internal::IsCheaplyCopyableV<decltype(refStrs)::value_type>);
+  std::mt19937 rng{124};
+  ThreadPool pool{4};
+  const auto comp{
+      [](const StrRef a, const StrRef b) { return a.get() < b.get(); }};
+
+  for (int i{0}; i < nIterations; ++i) {
+    std::ranges::shuffle(refStrs, rng);
+    EXPECT_FALSE(std::ranges::is_sorted(refStrs, comp));
+    pool.sort(refStrs.begin(), refStrs.end(), comp);
+    EXPECT_TRUE(std::ranges::is_sorted(refStrs, comp));
+    std::bitset<n> seen{};
+
+    for (const auto& ref : refStrs) {
+      const Index num{std::stoi(ref.get())};
+      EXPECT_FALSE(seen.test(num));
+      seen.set(num);
+    }
+
+    EXPECT_TRUE(seen.all());
   }
 }
 
