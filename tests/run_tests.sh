@@ -10,7 +10,8 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${TEST_DIR}/../cmake-build-debug"
 
 echo "==> Configuring Debug Build..."
-cmake -B "${BUILD_DIR}" -S "${TEST_DIR}/.." -DCMAKE_BUILD_TYPE=Debug
+cmake -B "${BUILD_DIR}" -S "${TEST_DIR}/.." -DCMAKE_BUILD_TYPE=Debug -DTW_BUILD_BENCHMARKS=OFF -DTW_BUILD_PROFILE=OFF \
+  -DTW_BUILD_EXAMPLES=OFF
 
 for test_cpp in *Tests.cpp; do
     test_name="${test_cpp%.cpp}"

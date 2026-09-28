@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.23)
 project(ThreadWeave VERSION 1.0 LANGUAGES CXX)
 
+option(TW_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(TW_BUILD_EXAMPLES, "Build example targets" ON)
+option(TW_BUILD_PROFILE "Build profiling targets" ON)
+option(TW_BUILD_TESTS "Build testing targets" ON)
+
 # --- Main target definition
 add_library(ThreadWeave INTERFACE)
 add_library(ThreadWeave::ThreadWeave ALIAS ThreadWeave)
@@ -66,14 +71,24 @@ if (PROJECT_IS_TOP_LEVEL)
             -Werror
             -Wno-error=sign-conversion
             -Wno-interference-size
-            -fconcepts-diagnostics-depth=2
     )
 
     # Subdirectories
-    add_subdirectory(benchmark)
-    add_subdirectory(examples)
-    add_subdirectory(profile)
-    add_subdirectory(tests)
+    if (TW_BUILD_BENCHMARKS)
+        add_subdirectory(benchmark)
+    endif ()
+
+    if (TW_BUILD_EXAMPLES)
+        add_subdirectory(examples)
+    endif ()
+
+    if (TW_BUILD_PROFILE)
+        add_subdirectory(profile)
+    endif ()
+
+    if (TW_BUILD_TESTS)
+        add_subdirectory(tests)
+    endif ()
 
     # Dependencies
     include(FetchContent)
