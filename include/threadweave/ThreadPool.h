@@ -649,7 +649,8 @@ inline void ThreadPool::executeTask(Internal::TaskBase* const task) {
 }
 
 inline Index ThreadPool::getVictim(const Index threadId) const noexcept {
-  thread_local std::mt19937 rng{static_cast<std::size_t>(threadId)};
+  thread_local std::mt19937 rng{
+      static_cast<std::mt19937::result_type>(threadId)};
   std::uniform_int_distribution<Index> idxDist{0, nThreads_ - 1};
   const Index idx1{idxDist(rng)};
   const Index idx2{idxDist(rng)};

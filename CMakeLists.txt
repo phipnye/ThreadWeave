@@ -69,7 +69,7 @@ if (PROJECT_IS_TOP_LEVEL)
             -Wconversion
             -pedantic-errors
             -Werror
-            -Wno-error=sign-conversion
+            -Wno-sign-conversion
     )
 
     # Subdirectories
