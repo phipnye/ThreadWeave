@@ -76,7 +76,6 @@ if (PROJECT_IS_TOP_LEVEL)
 
     # Subdirectories
     if (TW_BUILD_BENCHMARKS)
-        add_subdirectory(benchmark)
         set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
         set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
         FetchContent_Declare(
@@ -86,6 +85,7 @@ if (PROJECT_IS_TOP_LEVEL)
                 DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(googlebenchmark)
+        add_subdirectory(benchmark)
     endif ()
 
     if (TW_BUILD_EXAMPLES)
@@ -97,12 +97,12 @@ if (PROJECT_IS_TOP_LEVEL)
     endif ()
 
     if (TW_BUILD_TESTS)
-        add_subdirectory(tests)
         FetchContent_Declare(
                 googletest
                 URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
                 DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(googletest)
+        add_subdirectory(tests)
     endif ()
 endif ()

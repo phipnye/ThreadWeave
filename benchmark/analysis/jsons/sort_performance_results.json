@@ -1,39 +1,39 @@
 {
   "context": {
-    "date": "2026-09-07T17:27:34-07:00",
+    "date": "2026-09-29T12:37:32-07:00",
     "host_name": "philip-ThinkPad-X1-Carbon-Gen-10",
     "executable": "/home/philip/Documents/Cpp_projects/ThreadWeave/benchmark/../cmake-build-release/benchmark/SortPerformanceBenchmark",
-    "num_cpus": 16,
-    "mhz_per_cpu": 4700,
-    "cpu_scaling_enabled": true,
+    "num_cpus": 12,
+    "mhz_per_cpu": 2100,
+    "cpu_scaling_enabled": false,
     "aslr_enabled": false,
     "caches": [
       {
         "type": "Data",
         "level": 1,
         "size": 49152,
-        "num_sharing": 2
+        "num_sharing": 1
       },
       {
         "type": "Instruction",
         "level": 1,
         "size": 32768,
-        "num_sharing": 2
+        "num_sharing": 1
       },
       {
         "type": "Unified",
         "level": 2,
         "size": 1310720,
-        "num_sharing": 2
+        "num_sharing": 1
       },
       {
         "type": "Unified",
         "level": 3,
         "size": 18874368,
-        "num_sharing": 16
+        "num_sharing": 12
       }
     ],
-    "load_avg": [2.37061,2.32227,1.54248],
+    "load_avg": [0.397949,0.715332,0.612793],
     "library_version": "v1.9.5",
     "library_build_type": "release",
     "json_schema_version": 1
@@ -50,8 +50,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 7.1970573437283747e+01,
-      "cpu_time": 7.1967852099999988e+01,
+      "real_time": 1.1289577926654601e+02,
+      "cpu_time": 1.0957261853333333e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -66,8 +66,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 7.0045859378296882e+01,
-      "cpu_time": 7.0041748125000083e+01,
+      "real_time": 1.0970899449982123e+02,
+      "cpu_time": 1.0961250550000003e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -82,8 +82,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.4678969989530963e+00,
-      "cpu_time": 3.4681386689256373e+00,
+      "real_time": 4.5554881179721711e+00,
+      "cpu_time": 1.2514304255447226e-01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -98,8 +98,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 4.8184929386106308e-02,
-      "cpu_time": 4.8190109440901838e-02,
+      "real_time": 4.0351270415669840e-02,
+      "cpu_time": 1.1421014139258001e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -114,8 +114,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 8.3936184246558696e+02,
-      "cpu_time": 8.3928365800000006e+02,
+      "real_time": 1.3757096291998096e+03,
+      "cpu_time": 1.3057540918000007e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -130,8 +130,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 8.3568933198694140e+02,
-      "cpu_time": 8.3556913299999997e+02,
+      "real_time": 1.3584914849998313e+03,
+      "cpu_time": 1.3034229650000002e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -146,8 +146,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 8.1056441130267238e+00,
-      "cpu_time": 8.0950607760210023e+00,
+      "real_time": 3.4764211018733384e+01,
+      "cpu_time": 1.4449699356504183e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -162,8 +162,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 9.6569127912900649e-03,
-      "cpu_time": 9.6452024281175747e-03,
+      "real_time": 2.5270020853858682e-02,
+      "cpu_time": 1.1066171989999332e-02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -178,8 +178,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 9.3660569218453020e+03,
-      "cpu_time": 9.3631097731999998e+03,
+      "real_time": 1.5446274896400428e+04,
+      "cpu_time": 1.4666273869200008e+04,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -194,8 +194,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 9.3244817859958857e+03,
-      "cpu_time": 9.3137337229999994e+03,
+      "real_time": 1.5442713010999796e+04,
+      "cpu_time": 1.4674370254999998e+04,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -210,8 +210,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 1.3429008176467863e+02,
-      "cpu_time": 1.3490553916011541e+02,
+      "real_time": 3.1460666776660496e+01,
+      "cpu_time": 2.7158055540385412e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -226,8 +226,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 1.4337952767664879e-02,
-      "cpu_time": 1.4408197962845114e-02,
+      "real_time": 2.0367801937794098e-03,
+      "cpu_time": 1.8517351975418136e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::sort_sequential"
     },
@@ -242,8 +242,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.4831747494678460e+01,
-      "cpu_time": 1.0805680608695759e+01,
+      "real_time": 3.4130318666670760e+01,
+      "cpu_time": 1.1083130238094848e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -258,8 +258,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.5012711917617068e+01,
-      "cpu_time": 1.1014560739130212e+01,
+      "real_time": 3.4128504428432883e+01,
+      "cpu_time": 1.1079516666665004e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -274,8 +274,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 6.6548720750554113e-01,
-      "cpu_time": 3.9412499491025355e-01,
+      "real_time": 1.7207530003184878e-02,
+      "cpu_time": 1.7901152320021964e-02,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -290,8 +290,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 1.9105765727292699e-02,
-      "cpu_time": 3.6473870474487788e-02,
+      "real_time": 5.0417138413619701e-04,
+      "cpu_time": 1.6151711597227531e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -306,8 +306,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.0823150938376784e+02,
-      "cpu_time": 1.1045024430000225e+02,
+      "real_time": 4.0828344310002649e+02,
+      "cpu_time": 1.1635056899999795e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -322,8 +322,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.0943977900315076e+02,
-      "cpu_time": 1.1026074850000354e+02,
+      "real_time": 4.0829136099955576e+02,
+      "cpu_time": 1.1638041399999820e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -338,8 +338,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.8345653433559774e+00,
-      "cpu_time": 4.2262216502847777e-01,
+      "real_time": 6.0966147298674681e-02,
+      "cpu_time": 1.3690898378946875e-01,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -354,8 +354,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 9.3931145813421334e-03,
-      "cpu_time": 3.8263579017585674e-03,
+      "real_time": 1.4932309484746463e-04,
+      "cpu_time": 1.1766937193875789e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -370,8 +370,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.6018460334045812e+03,
-      "cpu_time": 1.0829159367999951e+03,
+      "real_time": 4.6729386258000886e+03,
+      "cpu_time": 1.3449057414000010e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -386,8 +386,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.5899773280834779e+03,
-      "cpu_time": 1.0714069080000002e+03,
+      "real_time": 4.6783296720004728e+03,
+      "cpu_time": 1.3447758560000125e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -402,8 +402,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 2.4848602221920910e+01,
-      "cpu_time": 2.2608811006496843e+01,
+      "real_time": 2.9895263868091586e+01,
+      "cpu_time": 2.8067562234124015e+00,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -418,8 +418,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 5.3997030847068956e-03,
-      "cpu_time": 2.0877715654740146e-02,
+      "real_time": 6.3975297477768603e-03,
+      "cpu_time": 2.0869538563280010e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=ThreadWeave"
     },
@@ -434,8 +434,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.6785931876927080e+01,
-      "cpu_time": 3.6770934500001275e+01,
+      "real_time": 3.7281212273687984e+01,
+      "cpu_time": 3.5706954157894032e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -450,8 +450,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.6267133521115674e+01,
-      "cpu_time": 3.6262412642857711e+01,
+      "real_time": 3.7545054789533374e+01,
+      "cpu_time": 3.5883500315787693e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -466,8 +466,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 1.3566536104467510e+00,
-      "cpu_time": 1.3593183215128932e+00,
+      "real_time": 1.0261426725504350e+00,
+      "cpu_time": 5.8588737533146007e-01,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -482,8 +482,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 3.6879685826245796e-02,
-      "cpu_time": 3.6967195422048522e-02,
+      "real_time": 2.7524391240749894e-02,
+      "cpu_time": 1.6408214846349002e-02,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -498,8 +498,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.1227598359109834e+02,
-      "cpu_time": 4.1218620030000039e+02,
+      "real_time": 4.2869161719982003e+02,
+      "cpu_time": 4.0364569549999771e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -514,8 +514,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.1353209799854085e+02,
-      "cpu_time": 4.1348952650000831e+02,
+      "real_time": 4.2851549350007190e+02,
+      "cpu_time": 4.0362620649999315e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -530,8 +530,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.2994572548876526e+00,
-      "cpu_time": 4.2620508278591762e+00,
+      "real_time": 2.6575788587807830e-01,
+      "cpu_time": 2.4888684905922145e-01,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -546,8 +546,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 1.0428590133816577e-02,
-      "cpu_time": 1.0340110427659002e-02,
+      "real_time": 6.1992788105815530e-04,
+      "cpu_time": 6.1659730757421846e-04,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -562,8 +562,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.6604443430202091e+03,
-      "cpu_time": 4.6320057848000033e+03,
+      "real_time": 4.7421453575996566e+03,
+      "cpu_time": 4.5190881454000046e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -578,8 +578,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.6352723250165582e+03,
-      "cpu_time": 4.6303469450000139e+03,
+      "real_time": 4.7294879139999466e+03,
+      "cpu_time": 4.5170701790000003e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -594,8 +594,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.5255493149722597e+01,
-      "cpu_time": 2.1043877387471650e+01,
+      "real_time": 2.6263070079320308e+01,
+      "cpu_time": 6.8862771864989698e+00,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -610,8 +610,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 9.7105532903746031e-03,
-      "cpu_time": 4.5431457483337892e-03,
+      "real_time": 5.5382254441508627e-03,
+      "cpu_time": 1.5238200639012837e-03,
       "time_unit": "ms",
       "label": "category=Performance;library=oneTBB"
     },
@@ -626,8 +626,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.8991254380541960e+01,
-      "cpu_time": 3.8989273833333812e+01,
+      "real_time": 3.4985558611060704e+01,
+      "cpu_time": 3.3325871511110947e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -642,8 +642,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 3.9003205233408764e+01,
-      "cpu_time": 3.9000843722223841e+01,
+      "real_time": 3.5604533333298605e+01,
+      "cpu_time": 3.3225007166666707e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -658,8 +658,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.2011586003136642e-01,
-      "cpu_time": 4.2010012773551769e-01,
+      "real_time": 1.0461540953074842e+00,
+      "cpu_time": 5.0035465283174396e-01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -674,8 +674,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 1.0774617711222425e-02,
-      "cpu_time": 1.0774761528806775e-02,
+      "real_time": 2.9902455094049634e-02,
+      "cpu_time": 1.5014000539038393e-02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -690,8 +690,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.7232563970610499e+02,
-      "cpu_time": 4.7119568560000141e+02,
+      "real_time": 4.8523907100006909e+02,
+      "cpu_time": 4.6516040709999800e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -706,8 +706,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.7340531303780153e+02,
-      "cpu_time": 4.7334314049999904e+02,
+      "real_time": 5.0890384249987619e+02,
+      "cpu_time": 4.8379749699999763e+02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -722,8 +722,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 5.5701161673618396e+00,
-      "cpu_time": 4.2602956849925828e+00,
+      "real_time": 4.3263781610244749e+01,
+      "cpu_time": 3.2682768481904390e+01,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -738,8 +738,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 1.1792957441031003e-02,
-      "cpu_time": 9.0414573290663620e-03,
+      "real_time": 8.9159723929647411e-02,
+      "cpu_time": 7.0261286177949370e-02,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -754,8 +754,8 @@
       "aggregate_name": "mean",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 5.5679736539954320e+03,
-      "cpu_time": 5.5676437493999974e+03,
+      "real_time": 6.0983513705999940e+03,
+      "cpu_time": 5.7885423244000040e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -770,8 +770,8 @@
       "aggregate_name": "median",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 5.5554316940251738e+03,
-      "cpu_time": 5.5551502179999943e+03,
+      "real_time": 6.0897177830001965e+03,
+      "cpu_time": 5.7861227979999803e+03,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -786,8 +786,8 @@
       "aggregate_name": "stddev",
       "aggregate_unit": "time",
       "iterations": 5,
-      "real_time": 4.7697035445891011e+01,
-      "cpu_time": 4.7591784661583560e+01,
+      "real_time": 2.0963929698367075e+01,
+      "cpu_time": 4.7499502357441283e+00,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     },
@@ -802,8 +802,8 @@
       "aggregate_name": "cv",
       "aggregate_unit": "percentage",
       "iterations": 5,
-      "real_time": 8.5663184508182558e-03,
-      "cpu_time": 8.5479220301608438e-03,
+      "real_time": 3.4376388673558033e-03,
+      "cpu_time": 8.2057795720384089e-04,
       "time_unit": "ms",
       "label": "category=Performance;library=std::execution::par"
     }
