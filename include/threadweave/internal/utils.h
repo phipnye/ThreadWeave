@@ -60,12 +60,15 @@ inline void assertionFailure(const char* expr, const char* file, const int line,
   std::abort();
 }
 
-// Attempt to pause (pauses on GCC and clang for x86 architectures and
-// std::this_thread::yield otherwise
+// Attempt to pause (uses pause on x86, isb on AArch64, and
+// std::this_thread::yield otherwise)
 inline void tryPause() noexcept {
 #if (defined(__GNUC__) || defined(__clang__)) && \
     (defined(__i386__) || defined(__x86_64__))
   __builtin_ia32_pause();
+#elif (defined(__GNUC__) || defined(__clang__)) && defined(__aarch64__)
+  // https://github.com/rust-lang/rust/commit/c064b6560b7ce0adeb9bbf5d7dcf12b1acb0c807
+  asm volatile("isb" ::: "memory");
 #else
   std::this_thread::yield();
 #endif
